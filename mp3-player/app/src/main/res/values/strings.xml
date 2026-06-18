@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">MP3播放器</string>
+    <string name="nav_playlist">播放列表</string>
+    <string name="nav_player">播放</string>
+    <string name="nav_settings">设置</string>
+    <string name="search_hint">搜索歌曲或歌手</string>
+    <string name="filter_all">全部</string>
+    <string name="filter_with_lrc">有歌词</string>
+    <string name="song_count">共 %d 首</string>
+    <string name="play">播放</string>
+    <string name="pause">暂停</string>
+    <string name="prev">上一首</string>
+    <string name="next">下一首</string>
+    <string name="mode_order">顺序播放</string>
+    <string name="mode_shuffle">随机播放</string>
+    <string name="no_songs">暂无歌曲\n请在设置中扫描音乐</string>
+    <string name="no_lyrics">暂无歌词</string>
+    <string name="now_playing">正在播放</string>
+    <string name="unknown_artist">未知歌手</string>
+    <string name="channel_playback">音乐播放</string>
+    <string name="settings_scan">扫描音乐</string>
+    <string name="settings_scan_paths">扫描目录（每行一个路径）</string>
+    <string name="settings_scan_paths_hint">/sdcard/Music</string>
+    <string name="settings_lyrics">歌词设置</string>
+    <string name="settings_overlay">悬浮歌词</string>
+    <string name="settings_overlay_grant">开启悬浮窗权限</string>
+    <string name="font_size">歌词字号</string>
+    <string name="highlight_color">已唱颜色</string>
+    <string name="overlay_position">悬浮位置</string>
+    <string name="position_top">顶部</string>
+    <string name="position_center">居中</string>
+    <string name="position_bottom">底部</string>
+    <string name="settings_playback">播放设置</string>
+    <string name="auto_resume">启动时自动恢复播放</string>
+    <string name="settings_theme">外观</string>
+    <string name="theme_light">浅色</string>
+    <string name="theme_dark">深色</string>
+    <string name="theme_system">跟随系统</string>
+    <string name="scan_done">扫描完成，共 %d 首</string>
+    <string name="scanning">正在扫描…</string>
+    <string name="overlay_on">悬浮歌词已开启</string>
+    <string name="overlay_off">悬浮歌词已关闭</string>
+    <string name="byd_tips">比亚迪车机：请开启「显示在其他应用上层」，并将本应用加入极速模式白名单。</string>
+    <string name="has_lrc">歌词</string>
+    <string name="playing_now">正在播放</string>
+</resources>
