@@ -28,21 +28,23 @@ class ScrollLyricView @JvmOverloads constructor(
     private var targetScrollY = 0f
     private var animating = false
 
-    private val frameCallback = Choreographer.FrameCallback {
-        if (!animating) return@FrameCallback
-        val smooth = settings.smoothLyrics
-        val lerp = if (smooth) 0.18f else 1f
-        displayPositionMs += (targetPositionMs - displayPositionMs) * lerp
-        computeTargetScroll()
-        smoothScrollY += (targetScrollY - smoothScrollY) * lerp
-        computeTargetScroll()
-        invalidate()
-        if (smooth && (abs(targetPositionMs - displayPositionMs) > 8f || abs(targetScrollY - smoothScrollY) > 0.5f)) {
-            Choreographer.getInstance().postFrameCallback(this)
-        } else {
-            displayPositionMs = targetPositionMs.toFloat()
-            smoothScrollY = targetScrollY
-            animating = false
+    private val frameCallback = object : Choreographer.FrameCallback {
+        override fun doFrame(frameTimeNanos: Long) {
+            if (!animating) return
+            val smooth = settings.smoothLyrics
+            val lerp = if (smooth) 0.18f else 1f
+            displayPositionMs += (targetPositionMs - displayPositionMs) * lerp
+            computeTargetScroll()
+            smoothScrollY += (targetScrollY - smoothScrollY) * lerp
+            computeTargetScroll()
+            invalidate()
+            if (smooth && (abs(targetPositionMs - displayPositionMs) > 8f || abs(targetScrollY - smoothScrollY) > 0.5f)) {
+                Choreographer.getInstance().postFrameCallback(this)
+            } else {
+                displayPositionMs = targetPositionMs.toFloat()
+                smoothScrollY = targetScrollY
+                animating = false
+            }
         }
     }
 
