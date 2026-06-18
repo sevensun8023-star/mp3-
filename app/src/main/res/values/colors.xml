@@ -1,12 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="primary">#FF1DB954</color>
-    <color name="primary_dark">#FF169043</color>
-    <color name="background">#FF121212</color>
-    <color name="surface">#FF1E1E1E</color>
-    <color name="text_primary">#FFFFFFFF</color>
-    <color name="text_secondary">#B3FFFFFF</color>
-    <color name="karaoke_highlight">#FFFFD54F</color>
-    <color name="karaoke_pending">#99FFFFFF</color>
-    <color name="karaoke_next">#66FFFFFF</color>
+    <color name="netease_red">#EC4141</color>
+    <color name="netease_red_dark">#C73535</color>
+    <color name="background">#F5F5F7</color>
+    <color name="surface">#FFFFFF</color>
+    <color name="surface_elevated">#FFFFFF</color>
+    <color name="text_primary">#1F1F1F</color>
+    <color name="text_secondary">#888888</color>
+    <color name="text_hint">#BBBBBB</color>
+    <color name="divider">#14000000</color>
+    <color name="chip_bg">#0FEC4141</color>
+    <color name="playing_highlight">#1AEC4141</color>
+    <color name="karaoke_highlight">#EC4141</color>
+    <color name="karaoke_pending">#661F1F1F</color>
+    <color name="karaoke_next">#44888888</color>
+    <color name="bottom_nav_bg">#FFFFFF</color>
 </resources>

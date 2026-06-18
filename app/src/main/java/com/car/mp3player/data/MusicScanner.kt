@@ -6,13 +6,28 @@ import android.provider.MediaStore
 import com.car.mp3player.model.Song
 import java.io.File
 
-class MusicScanner(private val context: Context) {
+class MusicScanner(
+    private val context: Context,
+    private val customPaths: List<String> = emptyList()
+) {
     private val audioExtensions = setOf("mp3", "flac", "m4a", "wav", "ogg", "aac")
 
     fun scan(): List<Song> {
-        val fromMediaStore = scanMediaStore()
-        if (fromMediaStore.isNotEmpty()) return fromMediaStore.sortedBy { it.title.lowercase() }
-        return scanDirectories(defaultScanPaths()).sortedBy { it.title.lowercase() }
+        val merged = linkedMapOf<String, Song>()
+        scanMediaStore().forEach { merged[it.path] = it }
+        scanDirectories(resolvePaths()).forEach { merged[it.path] = it }
+        return merged.values.sortedBy { it.title.lowercase() }
+    }
+
+    private fun resolvePaths(): List<File> {
+        val paths = mutableListOf<File>()
+        customPaths.forEach { paths.add(File(it)) }
+        if (paths.isEmpty()) {
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC)?.let { paths.add(it) }
+            paths.add(File("/storage/emulated/0/Music"))
+            paths.add(File("/sdcard/Music"))
+        }
+        return paths.distinctBy { it.absolutePath }
     }
 
     private fun scanMediaStore(): List<Song> {
@@ -23,11 +38,10 @@ class MusicScanner(private val context: Context) {
             MediaStore.Audio.Media.ARTIST,
             MediaStore.Audio.Media.DATA
         )
-        val selection = "${MediaStore.Audio.Media.IS_MUSIC}=1"
         context.contentResolver.query(
             MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
             projection,
-            selection,
+            "${MediaStore.Audio.Media.IS_MUSIC}=1",
             null,
             MediaStore.Audio.Media.TITLE + " ASC"
         )?.use { cursor ->
@@ -56,8 +70,8 @@ class MusicScanner(private val context: Context) {
         val songs = mutableListOf<Song>()
         var id = 1L
         for (root in paths) {
-            if (!root.exists()) continue
-            root.walkTopDown()
+            if (!root.exists() || !root.isDirectory) continue
+            root.walkTopDown().maxDepth(8)
                 .filter { it.isFile && isAudioFile(it.absolutePath) }
                 .forEach { file ->
                     songs.add(
@@ -74,25 +88,12 @@ class MusicScanner(private val context: Context) {
         return songs
     }
 
-    private fun defaultScanPaths(): List<File> {
-        val paths = mutableListOf<File>()
-        Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC)?.let { paths.add(it) }
-        paths.add(File("/storage/emulated/0/Music"))
-        paths.add(File("/sdcard/Music"))
-        context.getExternalFilesDirs(null).forEach { dir ->
-            dir?.let { paths.add(File(it, "Music")) }
-        }
-        return paths.distinctBy { it.absolutePath }
-    }
-
     private fun findLrc(audioPath: String): String? {
-        val base = audioPath.substringBeforeLast('.')
-        val lrc = File("$base.lrc")
-        return if (lrc.exists()) lrc.absolutePath else null
+        val lrc = File("${audioPath.substringBeforeLast('.')}.lrc")
+        return lrc.takeIf { it.exists() }?.absolutePath
     }
 
     private fun isAudioFile(path: String): Boolean {
-        val ext = path.substringAfterLast('.', "").lowercase()
-        return ext in audioExtensions
+        return path.substringAfterLast('.', "").lowercase() in audioExtensions
     }
 }

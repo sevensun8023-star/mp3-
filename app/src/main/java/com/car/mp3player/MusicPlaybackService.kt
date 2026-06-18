@@ -15,28 +15,33 @@ import androidx.core.app.NotificationCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import com.car.mp3player.data.SettingsRepository
 import com.car.mp3player.lrc.LrcParser
+import com.car.mp3player.model.PlaybackMode
 import com.car.mp3player.model.Song
 import com.car.mp3player.playback.PlaybackStateHolder
 import java.io.File
+import kotlin.random.Random
 
-class MusicPlaybackService : Service(), PlaybackStateHolder.Listener {
+class MusicPlaybackService : Service() {
     private var player: ExoPlayer? = null
     private val handler = Handler(Looper.getMainLooper())
+    private val settings by lazy { SettingsRepository(this) }
     private var playlist: List<Song> = emptyList()
     private var currentIndex = -1
     private var currentLines = emptyList<com.car.mp3player.model.LrcLine>()
+    private var shuffleQueue = mutableListOf<Int>()
+    private var saveTick = 0
 
     private val progressRunnable = object : Runnable {
         override fun run() {
             val p = player ?: return
-            PlaybackStateHolder.update(
-                song = playlist.getOrNull(currentIndex),
-                playing = p.isPlaying,
-                positionMs = p.currentPosition,
-                lines = currentLines
-            )
+            val song = playlist.getOrNull(currentIndex)
+            PlaybackStateHolder.update(song, p.isPlaying, p.currentPosition, currentLines)
             LyricsOverlayService.updateLyrics(applicationContext, PlaybackStateHolder.lyricState)
+            if (++saveTick % 25 == 0) {
+                persistProgress(song, p.currentPosition)
+            }
             handler.postDelayed(this, 120L)
         }
     }
@@ -47,40 +52,56 @@ class MusicPlaybackService : Service(), PlaybackStateHolder.Listener {
         player = ExoPlayer.Builder(this).build().apply {
             addListener(object : Player.Listener {
                 override fun onPlaybackStateChanged(playbackState: Int) {
-                    if (playbackState == Player.STATE_ENDED) {
-                        playNext()
-                    }
+                    if (playbackState == Player.STATE_ENDED) playNext()
                 }
             })
         }
-        PlaybackStateHolder.addListener(this)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_PLAY_INDEX -> {
                 val index = intent.getIntExtra(EXTRA_INDEX, 0)
+                val seek = intent.getLongExtra(EXTRA_SEEK, 0L)
                 val list = readPlaylist(intent)?.map { it.toSong() } ?: playlist
-                startPlaylist(list, index)
+                startPlaylist(list, index, seek)
             }
             ACTION_TOGGLE -> togglePlayPause()
             ACTION_NEXT -> playNext()
             ACTION_PREV -> playPrevious()
-            ACTION_STOP -> {
-                stopSelf()
+            ACTION_SET_MODE -> {
+                val mode = PlaybackMode.entries[intent.getIntExtra(EXTRA_MODE, 0)]
+                setPlayMode(mode)
             }
+            ACTION_RESUME -> resumeLast()
+            ACTION_STOP -> stopSelf()
         }
         return START_STICKY
     }
 
-    private fun startPlaylist(list: List<Song>, index: Int) {
+    private fun resumeLast() {
+        if (playlist.isEmpty()) return
+        val path = settings.lastSongPath ?: return
+        val index = playlist.indexOfFirst { it.path == path }
+        if (index >= 0) {
+            playSongAt(index, settings.lastPositionMs.coerceAtLeast(0L))
+        }
+    }
+
+    private fun setPlayMode(mode: PlaybackMode) {
+        PlaybackStateHolder.setPlayMode(mode)
+        refillShuffleQueue()
+    }
+
+    private fun startPlaylist(list: List<Song>, index: Int, seekMs: Long = 0L) {
         playlist = list
         currentIndex = index.coerceIn(0, (list.size - 1).coerceAtLeast(0))
         PlaybackStateHolder.setPlaylist(list, currentIndex)
-        playSongAt(currentIndex)
+        refillShuffleQueue()
+        playSongAt(currentIndex, seekMs)
     }
 
-    private fun playSongAt(index: Int) {
+    private fun playSongAt(index: Int, seekMs: Long = 0L) {
         if (index !in playlist.indices) return
         currentIndex = index
         val song = playlist[index]
@@ -90,11 +111,13 @@ class MusicPlaybackService : Service(), PlaybackStateHolder.Listener {
 
         player?.setMediaItem(MediaItem.fromUri(Uri.fromFile(File(song.path))))
         player?.prepare()
+        if (seekMs > 0L) player?.seekTo(seekMs)
         player?.play()
-        startForeground(NOTIFICATION_ID, buildNotification(song.title, true))
+        startForeground(NOTIFICATION_ID, buildNotification(song.title))
         handler.removeCallbacks(progressRunnable)
         handler.post(progressRunnable)
-        PlaybackStateHolder.update(song, true, 0L, currentLines)
+        persistProgress(song, seekMs)
+        PlaybackStateHolder.update(song, true, seekMs, currentLines)
         LyricsOverlayService.start(applicationContext)
         LyricsOverlayService.updateLyrics(applicationContext, PlaybackStateHolder.lyricState)
     }
@@ -103,13 +126,20 @@ class MusicPlaybackService : Service(), PlaybackStateHolder.Listener {
         val p = player ?: return
         if (p.isPlaying) p.pause() else p.play()
         val song = playlist.getOrNull(currentIndex)
-        updateNotification(song?.title ?: "MP3播放器", p.isPlaying)
+        updateNotification(song?.title ?: getString(R.string.app_name))
         PlaybackStateHolder.update(song, p.isPlaying, p.currentPosition, currentLines)
+        persistProgress(song, p.currentPosition)
     }
 
     private fun playNext() {
         if (playlist.isEmpty()) return
-        val next = if (currentIndex + 1 < playlist.size) currentIndex + 1 else 0
+        val next = when (PlaybackStateHolder.playMode) {
+            PlaybackMode.SHUFFLE -> {
+                if (shuffleQueue.isEmpty()) refillShuffleQueue()
+                shuffleQueue.removeFirstOrNull() ?: Random.nextInt(playlist.size)
+            }
+            PlaybackMode.ORDER -> if (currentIndex + 1 < playlist.size) currentIndex + 1 else 0
+        }
         playSongAt(next)
     }
 
@@ -120,22 +150,28 @@ class MusicPlaybackService : Service(), PlaybackStateHolder.Listener {
             p.seekTo(0)
             return
         }
-        val prev = if (currentIndex - 1 >= 0) currentIndex - 1 else playlist.lastIndex
+        val prev = when (PlaybackStateHolder.playMode) {
+            PlaybackMode.SHUFFLE -> {
+                if (shuffleQueue.isEmpty()) refillShuffleQueue()
+                shuffleQueue.removeLastOrNull() ?: Random.nextInt(playlist.size)
+            }
+            PlaybackMode.ORDER -> if (currentIndex - 1 >= 0) currentIndex - 1 else playlist.lastIndex
+        }
         playSongAt(prev)
     }
 
-    override fun onPlaybackChanged(
-        song: Song?,
-        playing: Boolean,
-        positionMs: Long,
-        lines: List<com.car.mp3player.model.LrcLine>
-    ) {
-        // no-op; service is source of truth
+    private fun refillShuffleQueue() {
+        shuffleQueue = playlist.indices.filter { it != currentIndex }.shuffled().toMutableList()
+    }
+
+    private fun persistProgress(song: Song?, positionMs: Long) {
+        if (song == null) return
+        settings.lastSongPath = song.path
+        settings.lastPositionMs = positionMs
     }
 
     override fun onDestroy() {
         handler.removeCallbacks(progressRunnable)
-        PlaybackStateHolder.removeListener(this)
         player?.release()
         player = null
         super.onDestroy()
@@ -157,7 +193,7 @@ class MusicPlaybackService : Service(), PlaybackStateHolder.Listener {
         getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
 
-    private fun buildNotification(title: String, playing: Boolean): Notification {
+    private fun buildNotification(title: String): Notification {
         val open = PendingIntent.getActivity(
             this, 0, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
@@ -171,9 +207,8 @@ class MusicPlaybackService : Service(), PlaybackStateHolder.Listener {
             .build()
     }
 
-    private fun updateNotification(title: String, playing: Boolean) {
-        getSystemService(NotificationManager::class.java)
-            .notify(NOTIFICATION_ID, buildNotification(title, playing))
+    private fun updateNotification(title: String) {
+        getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, buildNotification(title))
     }
 
     companion object {
@@ -181,9 +216,13 @@ class MusicPlaybackService : Service(), PlaybackStateHolder.Listener {
         const val ACTION_TOGGLE = "toggle"
         const val ACTION_NEXT = "next"
         const val ACTION_PREV = "prev"
+        const val ACTION_SET_MODE = "set_mode"
+        const val ACTION_RESUME = "resume"
         const val ACTION_STOP = "stop"
         const val EXTRA_INDEX = "index"
+        const val EXTRA_SEEK = "seek"
         const val EXTRA_PLAYLIST = "playlist"
+        const val EXTRA_MODE = "mode"
         private const val CHANNEL_ID = "playback"
         private const val NOTIFICATION_ID = 1001
     }
