@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.content.edit
+import com.car.mp3player.model.AppThemePreset
 import com.car.mp3player.model.LyricFontFamily
 import com.car.mp3player.model.LyricThemePreset
 import com.car.mp3player.model.ThemeMode
@@ -98,6 +99,14 @@ class SettingsRepository(context: Context) {
     var themeMode: ThemeMode
         get() = ThemeMode.entries[prefs.getInt(KEY_THEME, ThemeMode.SYSTEM.ordinal)]
         set(value) = prefs.edit { putInt(KEY_THEME, value.ordinal) }
+
+    fun appTheme(): AppThemePreset = AppThemePreset.fromId(
+        prefs.getString(KEY_APP_THEME, AppThemePreset.NETEASE.id) ?: AppThemePreset.NETEASE.id
+    )
+
+    fun setAppTheme(preset: AppThemePreset) {
+        prefs.edit { putString(KEY_APP_THEME, preset.id) }
+    }
 
     var lastSongPath: String?
         get() = prefs.getString(KEY_LAST_SONG, null)
@@ -204,6 +213,7 @@ class SettingsRepository(context: Context) {
         const val KEY_BOOT_AUTO_START = "boot_auto_start"
         const val KEY_CLUSTER_LYRICS = "cluster_lyrics"
         const val KEY_THEME = "theme_mode"
+        const val KEY_APP_THEME = "app_theme"
         const val KEY_LYRIC_THEME = "lyric_theme"
         const val KEY_LYRIC_FONT = "lyric_font"
         const val KEY_LAST_SONG = "last_song_path"

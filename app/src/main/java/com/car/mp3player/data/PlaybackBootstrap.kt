@@ -9,8 +9,14 @@ import com.car.mp3player.model.Song
 
 object PlaybackBootstrap {
     fun scanSongs(context: Context, settings: SettingsRepository): List<Song> {
-        return MusicScanner(context, settings.scanPaths(), settings.scanTreeUris()).scan()
+        val songs = MusicScanner(context, settings.scanPaths(), settings.scanTreeUris()).scan()
+        if (songs.isNotEmpty()) {
+            PlaylistCache.save(context, songs)
+        }
+        return songs
     }
+
+    fun loadCachedSongs(context: Context): List<Song> = PlaylistCache.load(context)
 
     fun resumeIfNeeded(context: Context, songs: List<Song>, settings: SettingsRepository) {
         if (!settings.autoResumePlayback || songs.isEmpty()) return
