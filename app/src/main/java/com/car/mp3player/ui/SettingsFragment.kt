@@ -12,9 +12,11 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.Fragment
 import com.car.mp3player.LyricsOverlayService
 import com.car.mp3player.R
+import com.car.mp3player.data.ScanPathHelper
 import com.car.mp3player.data.SettingsRepository
 import com.car.mp3player.databinding.FragmentSettingsBinding
 import com.car.mp3player.model.ThemeMode
+import com.google.android.material.chip.Chip
 
 class SettingsFragment : Fragment() {
     private var _binding: FragmentSettingsBinding? = null
@@ -27,6 +29,17 @@ class SettingsFragment : Fragment() {
         binding.switchOverlay.isChecked = settings.overlayEnabled && Settings.canDrawOverlays(requireContext())
     }
 
+    private val pickFolder = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri == null) return@registerForActivityResult
+        val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
+        runCatching {
+            requireContext().contentResolver.takePersistableUriPermission(uri, flags)
+        }
+        settings.addScanTreeUri(uri.toString())
+        refreshScanPathsUi()
+        Toast.makeText(requireContext(), R.string.folder_added, Toast.LENGTH_SHORT).show()
+    }
+
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentSettingsBinding.inflate(inflater, container, false)
         return binding.root
@@ -35,9 +48,10 @@ class SettingsFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         settings = SettingsRepository(requireContext())
-        binding.scanPathsInput.setText(settings.scanPathsText)
         binding.switchAutoResume.isChecked = settings.autoResumePlayback
         binding.switchOverlay.isChecked = settings.overlayEnabled
+        binding.switchOnlineLyrics.isChecked = settings.onlineLyricsEnabled
+        binding.switchOnlineCover.isChecked = settings.onlineCoverEnabled
         binding.fontSizeSlider.value = settings.fontSizeSp
 
         when (settings.themeMode) {
@@ -51,8 +65,13 @@ class SettingsFragment : Fragment() {
             else -> binding.posCenter.isChecked = true
         }
 
+        refreshScanPathsUi()
+
+        binding.btnPickFolder.setOnClickListener { pickFolder.launch(null) }
+        binding.btnAddMusic.setOnClickListener { addPresetPath("内置 Music") }
+        binding.btnAddDownload.setOnClickListener { addPresetPath("下载目录") }
+
         binding.btnScan.setOnClickListener {
-            settings.scanPathsText = binding.scanPathsInput.text?.toString().orEmpty()
             binding.btnScan.isEnabled = false
             binding.btnScan.text = getString(R.string.scanning)
             (activity as? MainHost)?.scanMusic { count ->
@@ -64,6 +83,14 @@ class SettingsFragment : Fragment() {
 
         binding.switchAutoResume.setOnCheckedChangeListener { _, checked ->
             settings.autoResumePlayback = checked
+        }
+
+        binding.switchOnlineLyrics.setOnCheckedChangeListener { _, checked ->
+            settings.onlineLyricsEnabled = checked
+        }
+
+        binding.switchOnlineCover.setOnCheckedChangeListener { _, checked ->
+            settings.onlineCoverEnabled = checked
         }
 
         binding.themeGroup.setOnCheckedChangeListener { _, checkedId ->
@@ -100,6 +127,34 @@ class SettingsFragment : Fragment() {
                 else -> SettingsRepository.POSITION_CENTER
             }
             LyricsOverlayService.refresh(requireContext())
+        }
+    }
+
+    private fun addPresetPath(label: String) {
+        val path = ScanPathHelper.presetPaths().firstOrNull { it.first == label }?.second ?: return
+        settings.addScanPath(path)
+        refreshScanPathsUi()
+        Toast.makeText(requireContext(), getString(R.string.folder_added), Toast.LENGTH_SHORT).show()
+    }
+
+    private fun refreshScanPathsUi() {
+        binding.scanPathsChipGroup.removeAllViews()
+        val entries = settings.allScanEntries()
+        if (entries.isEmpty()) {
+            binding.scanPathsEmpty.visibility = View.VISIBLE
+        } else {
+            binding.scanPathsEmpty.visibility = View.GONE
+            entries.forEach { entry ->
+                val chip = Chip(requireContext()).apply {
+                    text = ScanPathHelper.displayName(requireContext(), entry)
+                    isCloseIconVisible = true
+                    setOnCloseIconClickListener {
+                        settings.removeScanEntry(entry)
+                        refreshScanPathsUi()
+                    }
+                }
+                binding.scanPathsChipGroup.addView(chip)
+            }
         }
     }
 

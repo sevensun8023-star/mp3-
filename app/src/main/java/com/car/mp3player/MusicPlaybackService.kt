@@ -16,12 +16,18 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import com.car.mp3player.data.SettingsRepository
+import com.car.mp3player.data.SongMetadataLoader
 import com.car.mp3player.lrc.LrcParser
 import com.car.mp3player.model.PlaybackMode
 import com.car.mp3player.model.Song
 import com.car.mp3player.playback.PlaybackStateHolder
 import java.io.File
 import kotlin.random.Random
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MusicPlaybackService : Service() {
     private var player: ExoPlayer? = null
@@ -32,6 +38,10 @@ class MusicPlaybackService : Service() {
     private var currentLines = emptyList<com.car.mp3player.model.LrcLine>()
     private var shuffleQueue = mutableListOf<Int>()
     private var saveTick = 0
+    private val metadataScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val metadataLoader by lazy {
+        SongMetadataLoader(cacheDir, settings, coverFetcher = com.car.mp3player.data.CoverArtFetcher(this))
+    }
 
     private val progressRunnable = object : Runnable {
         override fun run() {
@@ -105,11 +115,10 @@ class MusicPlaybackService : Service() {
         if (index !in playlist.indices) return
         currentIndex = index
         val song = playlist[index]
-        currentLines = song.lrcPath?.let { path ->
-            runCatching { LrcParser.parseFile(File(path)) }.getOrDefault(emptyList())
-        } ?: emptyList()
+        PlaybackStateHolder.setCoverArt(null)
+        currentLines = loadLocalLyrics(song)
 
-        player?.setMediaItem(MediaItem.fromUri(Uri.fromFile(File(song.path))))
+        player?.setMediaItem(MediaItem.fromUri(songUri(song)))
         player?.prepare()
         if (seekMs > 0L) player?.seekTo(seekMs)
         player?.play()
@@ -120,6 +129,47 @@ class MusicPlaybackService : Service() {
         PlaybackStateHolder.update(song, true, seekMs, currentLines)
         LyricsOverlayService.start(applicationContext)
         LyricsOverlayService.updateLyrics(applicationContext, PlaybackStateHolder.lyricState)
+        loadMetadataAsync(song)
+    }
+
+    private fun loadLocalLyrics(song: Song): List<com.car.mp3player.model.LrcLine> {
+        song.lrcPath?.let { path ->
+            runCatching { LrcParser.parseFile(File(path)) }.getOrNull()?.takeIf { it.isNotEmpty() }?.let {
+                return it
+            }
+        }
+        return emptyList()
+    }
+
+    private fun loadMetadataAsync(song: Song) {
+        metadataScope.launch {
+            val cover = metadataLoader.loadCover(song)
+            if (playlist.getOrNull(currentIndex)?.path == song.path && cover != null) {
+                withContext(Dispatchers.Main) {
+                    PlaybackStateHolder.setCoverArt(cover)
+                }
+            }
+
+            if (loadLocalLyrics(song).isEmpty()) {
+                val lines = metadataLoader.loadLyrics(song) ?: return@launch
+                if (playlist.getOrNull(currentIndex)?.path != song.path) return@launch
+                currentLines = lines
+                withContext(Dispatchers.Main) {
+                    val p = player
+                    PlaybackStateHolder.update(
+                        song,
+                        p?.isPlaying == true,
+                        p?.currentPosition ?: 0L,
+                        currentLines
+                    )
+                    LyricsOverlayService.updateLyrics(applicationContext, PlaybackStateHolder.lyricState)
+                }
+            }
+        }
+    }
+
+    private fun songUri(song: Song): Uri {
+        return if (song.path.startsWith("content://")) Uri.parse(song.path) else Uri.fromFile(File(song.path))
     }
 
     private fun togglePlayPause() {

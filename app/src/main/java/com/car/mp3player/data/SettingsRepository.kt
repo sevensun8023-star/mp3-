@@ -54,10 +54,56 @@ class SettingsRepository(context: Context) {
         get() = prefs.getString(KEY_SCAN_PATHS, DEFAULT_SCAN_PATHS) ?: DEFAULT_SCAN_PATHS
         set(value) = prefs.edit { putString(KEY_SCAN_PATHS, value) }
 
+    var scanTreeUrisText: String
+        get() = prefs.getString(KEY_SCAN_TREE_URIS, "") ?: ""
+        set(value) = prefs.edit { putString(KEY_SCAN_TREE_URIS, value) }
+
+    var onlineLyricsEnabled: Boolean
+        get() = prefs.getBoolean(KEY_ONLINE_LYRICS, true)
+        set(value) = prefs.edit { putBoolean(KEY_ONLINE_LYRICS, value) }
+
+    var onlineCoverEnabled: Boolean
+        get() = prefs.getBoolean(KEY_ONLINE_COVER, true)
+        set(value) = prefs.edit { putBoolean(KEY_ONLINE_COVER, value) }
+
     fun scanPaths(): List<String> {
         return scanPathsText.lines()
             .map { it.trim() }
             .filter { it.isNotEmpty() }
+    }
+
+    fun scanTreeUris(): List<String> {
+        return scanTreeUrisText.lines()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+    }
+
+    fun allScanEntries(): List<String> = scanPaths() + scanTreeUris()
+
+    fun addScanPath(path: String) {
+        val paths = scanPaths().toMutableSet()
+        if (paths.add(path)) {
+            scanPathsText = paths.joinToString("\n")
+        }
+    }
+
+    fun addScanTreeUri(uri: String) {
+        val uris = scanTreeUris().toMutableSet()
+        if (uris.add(uri)) {
+            scanTreeUrisText = uris.joinToString("\n")
+        }
+    }
+
+    fun removeScanEntry(entry: String) {
+        if (entry.startsWith("content://")) {
+            val uris = scanTreeUris().toMutableSet()
+            uris.remove(entry)
+            scanTreeUrisText = uris.joinToString("\n")
+        } else {
+            val paths = scanPaths().toMutableSet()
+            paths.remove(entry)
+            scanPathsText = paths.joinToString("\n")
+        }
     }
 
     fun applyTheme() {
@@ -82,6 +128,9 @@ class SettingsRepository(context: Context) {
         const val KEY_LAST_SONG = "last_song_path"
         const val KEY_LAST_POSITION = "last_position_ms"
         const val KEY_SCAN_PATHS = "scan_paths"
+        const val KEY_SCAN_TREE_URIS = "scan_tree_uris"
+        const val KEY_ONLINE_LYRICS = "online_lyrics"
+        const val KEY_ONLINE_COVER = "online_cover"
 
         const val POSITION_TOP = 0
         const val POSITION_CENTER = 1

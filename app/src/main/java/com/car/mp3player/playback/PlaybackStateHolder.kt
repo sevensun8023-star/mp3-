@@ -19,6 +19,8 @@ object PlaybackStateHolder {
         private set
     var lrcLines: List<LrcLine> = emptyList()
         private set
+    var coverArtPath: String? = null
+        private set
     var playMode: PlaybackMode = PlaybackMode.ORDER
         private set
 
@@ -32,12 +34,14 @@ object PlaybackStateHolder {
         fun onPlaybackChanged(song: Song?, playing: Boolean, positionMs: Long, lines: List<LrcLine>)
         fun onPlayModeChanged(mode: PlaybackMode) {}
         fun onPlaylistChanged(songs: List<Song>) {}
+        fun onCoverChanged(coverPath: String?) {}
     }
 
     fun addListener(listener: Listener) {
         listeners.add(listener)
         listener.onPlayModeChanged(playMode)
         listener.onPlaylistChanged(songs)
+        listener.onCoverChanged(coverArtPath)
     }
 
     fun removeListener(listener: Listener) {
@@ -54,6 +58,11 @@ object PlaybackStateHolder {
     fun setPlayMode(mode: PlaybackMode) {
         playMode = mode
         listeners.forEach { it.onPlayModeChanged(mode) }
+    }
+
+    fun setCoverArt(path: String?) {
+        coverArtPath = path
+        listeners.forEach { it.onCoverChanged(path) }
     }
 
     fun update(song: Song?, playing: Boolean, positionMs: Long, lines: List<LrcLine>) {

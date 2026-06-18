@@ -1,14 +1,17 @@
 package com.car.mp3player.data
 
 import android.content.Context
+import android.net.Uri
 import android.os.Environment
 import android.provider.MediaStore
+import androidx.documentfile.provider.DocumentFile
 import com.car.mp3player.model.Song
 import java.io.File
 
 class MusicScanner(
     private val context: Context,
-    private val customPaths: List<String> = emptyList()
+    private val customPaths: List<String> = emptyList(),
+    private val treeUris: List<String> = emptyList()
 ) {
     private val audioExtensions = setOf("mp3", "flac", "m4a", "wav", "ogg", "aac")
 
@@ -16,6 +19,7 @@ class MusicScanner(
         val merged = linkedMapOf<String, Song>()
         scanMediaStore().forEach { merged[it.path] = it }
         scanDirectories(resolvePaths()).forEach { merged[it.path] = it }
+        scanDocumentTrees().forEach { merged[it.path] = it }
         return merged.values.sortedBy { it.title.lowercase() }
     }
 
@@ -88,7 +92,40 @@ class MusicScanner(
         return songs
     }
 
+    private fun scanDocumentTrees(): List<Song> {
+        val songs = mutableListOf<Song>()
+        var id = 10_000_000L
+        for (uriStr in treeUris) {
+            val root = DocumentFile.fromTreeUri(context, Uri.parse(uriStr)) ?: continue
+            walkDocumentFile(root, songs) { id++ }
+        }
+        return songs
+    }
+
+    private fun walkDocumentFile(
+        file: DocumentFile,
+        out: MutableList<Song>,
+        nextId: () -> Long
+    ) {
+        if (file.isDirectory) {
+            file.listFiles().forEach { walkDocumentFile(it, out, nextId) }
+            return
+        }
+        val name = file.name ?: return
+        if (!isAudioFile(name)) return
+        out.add(
+            Song(
+                id = nextId(),
+                title = name.substringBeforeLast('.'),
+                artist = "本地音乐",
+                path = file.uri.toString(),
+                lrcPath = null
+            )
+        )
+    }
+
     private fun findLrc(audioPath: String): String? {
+        if (audioPath.startsWith("content://")) return null
         val lrc = File("${audioPath.substringBeforeLast('.')}.lrc")
         return lrc.takeIf { it.exists() }?.absolutePath
     }

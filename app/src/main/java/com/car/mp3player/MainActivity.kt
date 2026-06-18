@@ -78,7 +78,7 @@ class MainActivity : AppCompatActivity(), MainHost {
     override fun scanMusic(onDone: ((Int) -> Unit)?) {
         CoroutineScope(Dispatchers.Main).launch {
             songs = withContext(Dispatchers.IO) {
-                MusicScanner(this@MainActivity, settings.scanPaths()).scan()
+                MusicScanner(this@MainActivity, settings.scanPaths(), settings.scanTreeUris()).scan()
             }
             PlaybackStateHolder.setPlaylist(songs)
             (supportFragmentManager.findFragmentByTag("f0") as? PlaylistFragment)?.refreshFromHost()

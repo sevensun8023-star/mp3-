@@ -1,6 +1,7 @@
 package com.car.mp3player.ui
 
 import android.content.Intent
+import android.graphics.BitmapFactory
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -13,6 +14,7 @@ import com.car.mp3player.databinding.FragmentPlayerBinding
 import com.car.mp3player.model.PlaybackMode
 import com.car.mp3player.model.Song
 import com.car.mp3player.playback.PlaybackStateHolder
+import java.io.File
 
 class PlayerFragment : Fragment(), PlaybackStateHolder.Listener {
     private var _binding: FragmentPlayerBinding? = null
@@ -30,6 +32,7 @@ class PlayerFragment : Fragment(), PlaybackStateHolder.Listener {
         binding.btnPrev.setOnClickListener { sendAction(MusicPlaybackService.ACTION_PREV) }
         binding.btnMode.setOnClickListener { toggleMode() }
         renderState()
+        renderCover(PlaybackStateHolder.coverArtPath)
     }
 
     override fun onStart() {
@@ -56,6 +59,10 @@ class PlayerFragment : Fragment(), PlaybackStateHolder.Listener {
         updateModeUi(mode)
     }
 
+    override fun onCoverChanged(coverPath: String?) {
+        renderCover(coverPath)
+    }
+
     private fun renderState() {
         val song = PlaybackStateHolder.currentSong
         binding.songTitle.text = song?.title ?: getString(R.string.app_name)
@@ -65,6 +72,19 @@ class PlayerFragment : Fragment(), PlaybackStateHolder.Listener {
         )
         binding.scrollLyricView.update(PlaybackStateHolder.lrcLines, PlaybackStateHolder.positionMs)
         updateModeUi(PlaybackStateHolder.playMode)
+    }
+
+    private fun renderCover(coverPath: String?) {
+        if (coverPath.isNullOrBlank()) {
+            binding.albumCover.setImageResource(R.drawable.bg_album_placeholder)
+            return
+        }
+        val bitmap = runCatching { BitmapFactory.decodeFile(coverPath) }.getOrNull()
+        if (bitmap != null) {
+            binding.albumCover.setImageBitmap(bitmap)
+        } else {
+            binding.albumCover.setImageResource(R.drawable.bg_album_placeholder)
+        }
     }
 
     private fun updateModeUi(mode: PlaybackMode) {

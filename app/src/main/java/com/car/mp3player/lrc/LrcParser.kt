@@ -10,6 +10,19 @@ object LrcParser {
 
     fun parseFile(lrcFile: File): List<LrcLine> = parseContent(lrcFile.readText())
 
+    fun fromPlainText(text: String): List<LrcLine> {
+        val lines = text.lines().map { it.trim() }.filter { it.isNotEmpty() }
+        if (lines.isEmpty()) return emptyList()
+        val parsed = lines.mapIndexed { index, line ->
+            LrcLine(
+                chars = line.map { LrcChar(it.toString(), index * 5000L) },
+                startTimeMs = index * 5000L,
+                endTimeMs = index * 5000L
+            )
+        }
+        return assignEndTimes(parsed)
+    }
+
     fun parseContent(content: String): List<LrcLine> {
         val rawLines = content.lines()
             .map { it.trim() }
