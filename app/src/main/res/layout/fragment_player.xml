@@ -74,11 +74,10 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:background="@drawable/bg_control_panel"
-            android:elevation="12dp"
             android:orientation="vertical"
             android:paddingHorizontal="20dp"
-            android:paddingTop="16dp"
-            android:paddingBottom="18dp"
+            android:paddingTop="20dp"
+            android:paddingBottom="22dp"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent">
@@ -89,9 +88,9 @@
                 android:layout_height="wrap_content"
                 android:valueFrom="0"
                 android:valueTo="100"
-                app:thumbColor="@color/netease_red"
-                app:trackColorActive="@color/netease_red"
-                app:trackColorInactive="#33000000" />
+                app:thumbColor="#F5FFFFFF"
+                app:trackColorActive="#F5FFFFFF"
+                app:trackColorInactive="#44FFFFFF" />
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -105,7 +104,7 @@
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:text="0:00"
-                    android:textColor="@color/text_secondary"
+                    android:textColor="#AAFFFFFF"
                     android:textSize="12sp" />
 
                 <TextView
@@ -114,7 +113,7 @@
                     android:layout_height="wrap_content"
                     android:gravity="end"
                     android:text="0:00"
-                    android:textColor="@color/text_secondary"
+                    android:textColor="#AAFFFFFF"
                     android:textSize="12sp" />
             </LinearLayout>
 
@@ -132,7 +131,7 @@
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:contentDescription="@string/mode_order"
                     android:src="@drawable/ic_mode_order"
-                    app:tint="@color/text_primary" />
+                    app:tint="#F0FFFFFF" />
 
                 <ImageButton
                     android:id="@+id/btnPrev"
@@ -142,7 +141,7 @@
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:contentDescription="@string/prev"
                     android:src="@drawable/ic_skip_previous"
-                    app:tint="@color/text_primary" />
+                    app:tint="#F0FFFFFF" />
 
                 <ImageButton
                     android:id="@+id/btnPlayPause"
@@ -153,7 +152,8 @@
                     android:contentDescription="@string/play"
                     android:padding="14dp"
                     android:scaleType="fitCenter"
-                    android:src="@drawable/ic_play" />
+                    android:src="@drawable/ic_play"
+                    app:tint="#F5FFFFFF" />
 
                 <ImageButton
                     android:id="@+id/btnNext"
@@ -163,7 +163,7 @@
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:contentDescription="@string/next"
                     android:src="@drawable/ic_skip_next"
-                    app:tint="@color/text_primary" />
+                    app:tint="#F0FFFFFF" />
 
                 <View
                     android:layout_width="40dp"
@@ -177,7 +177,7 @@
                 android:layout_gravity="center_horizontal"
                 android:layout_marginTop="4dp"
                 android:text="@string/mode_order"
-                android:textColor="@color/text_secondary"
+                android:textColor="#99FFFFFF"
                 android:textSize="12sp" />
         </LinearLayout>
     </androidx.constraintlayout.widget.ConstraintLayout>
