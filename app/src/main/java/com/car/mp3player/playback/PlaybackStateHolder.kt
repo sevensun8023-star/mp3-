@@ -17,6 +17,8 @@ object PlaybackStateHolder {
         private set
     var positionMs: Long = 0L
         private set
+    var durationMs: Long = 0L
+        private set
     var lrcLines: List<LrcLine> = emptyList()
         private set
     var coverArtPath: String? = null
@@ -35,6 +37,7 @@ object PlaybackStateHolder {
         fun onPlayModeChanged(mode: PlaybackMode) {}
         fun onPlaylistChanged(songs: List<Song>) {}
         fun onCoverChanged(coverPath: String?) {}
+        fun onDurationChanged(durationMs: Long) {}
     }
 
     fun addListener(listener: Listener) {
@@ -42,6 +45,7 @@ object PlaybackStateHolder {
         listener.onPlayModeChanged(playMode)
         listener.onPlaylistChanged(songs)
         listener.onCoverChanged(coverArtPath)
+        listener.onDurationChanged(durationMs)
     }
 
     fun removeListener(listener: Listener) {
@@ -65,10 +69,17 @@ object PlaybackStateHolder {
         listeners.forEach { it.onCoverChanged(path) }
     }
 
-    fun update(song: Song?, playing: Boolean, positionMs: Long, lines: List<LrcLine>) {
+    fun setDuration(durationMs: Long) {
+        if (this.durationMs == durationMs) return
+        this.durationMs = durationMs
+        listeners.forEach { it.onDurationChanged(durationMs) }
+    }
+
+    fun update(song: Song?, playing: Boolean, positionMs: Long, lines: List<LrcLine>, durationMs: Long = this.durationMs) {
         isPlaying = playing
         this.positionMs = positionMs
         lrcLines = lines
+        if (durationMs > 0) this.durationMs = durationMs
         if (song != null) {
             val idx = songs.indexOfFirst { it.path == song.path }
             if (idx >= 0) currentIndex = idx

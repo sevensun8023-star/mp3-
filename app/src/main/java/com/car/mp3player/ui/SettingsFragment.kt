@@ -15,6 +15,8 @@ import com.car.mp3player.R
 import com.car.mp3player.data.ScanPathHelper
 import com.car.mp3player.data.SettingsRepository
 import com.car.mp3player.databinding.FragmentSettingsBinding
+import com.car.mp3player.model.LyricFontFamily
+import com.car.mp3player.model.LyricThemePreset
 import com.car.mp3player.model.ThemeMode
 import com.google.android.material.chip.Chip
 
@@ -52,7 +54,13 @@ class SettingsFragment : Fragment() {
         binding.switchOverlay.isChecked = settings.overlayEnabled
         binding.switchOnlineLyrics.isChecked = settings.onlineLyricsEnabled
         binding.switchOnlineCover.isChecked = settings.onlineCoverEnabled
+        binding.switchSmoothLyrics.isChecked = settings.smoothLyrics
+        binding.playerFontSizeSlider.value = settings.playerFontSizeSp
+        binding.playerNextFontSizeSlider.value = settings.playerNextFontSizeSp
         binding.fontSizeSlider.value = settings.fontSizeSp
+        binding.currentLineScaleSlider.value = settings.currentLineScale
+        binding.nextLineScaleSlider.value = settings.nextLineScale
+        binding.maxLyricLinesSlider.value = settings.maxLyricVisualLines.toFloat()
 
         when (settings.themeMode) {
             ThemeMode.LIGHT -> binding.themeLight.isChecked = true
@@ -65,6 +73,8 @@ class SettingsFragment : Fragment() {
             else -> binding.posCenter.isChecked = true
         }
 
+        setupLyricThemeChips()
+        setupLyricFontChips()
         refreshScanPathsUi()
 
         binding.btnPickFolder.setOnClickListener { pickFolder.launch(null) }
@@ -84,13 +94,14 @@ class SettingsFragment : Fragment() {
         binding.switchAutoResume.setOnCheckedChangeListener { _, checked ->
             settings.autoResumePlayback = checked
         }
-
         binding.switchOnlineLyrics.setOnCheckedChangeListener { _, checked ->
             settings.onlineLyricsEnabled = checked
         }
-
         binding.switchOnlineCover.setOnCheckedChangeListener { _, checked ->
             settings.onlineCoverEnabled = checked
+        }
+        binding.switchSmoothLyrics.setOnCheckedChangeListener { _, checked ->
+            settings.smoothLyrics = checked
         }
 
         binding.themeGroup.setOnCheckedChangeListener { _, checkedId ->
@@ -115,9 +126,29 @@ class SettingsFragment : Fragment() {
 
         binding.btnGrantOverlay.setOnClickListener { requestOverlay() }
 
+        binding.playerFontSizeSlider.addOnChangeListener { _, value, _ ->
+            settings.playerFontSizeSp = value
+            notifyLyricStyleChanged()
+        }
+        binding.playerNextFontSizeSlider.addOnChangeListener { _, value, _ ->
+            settings.playerNextFontSizeSp = value
+            notifyLyricStyleChanged()
+        }
         binding.fontSizeSlider.addOnChangeListener { _, value, _ ->
             settings.fontSizeSp = value
             LyricsOverlayService.refresh(requireContext())
+        }
+        binding.currentLineScaleSlider.addOnChangeListener { _, value, _ ->
+            settings.currentLineScale = value
+            notifyLyricStyleChanged()
+        }
+        binding.nextLineScaleSlider.addOnChangeListener { _, value, _ ->
+            settings.nextLineScale = value
+            notifyLyricStyleChanged()
+        }
+        binding.maxLyricLinesSlider.addOnChangeListener { _, value, _ ->
+            settings.maxLyricVisualLines = value.toInt()
+            notifyLyricStyleChanged()
         }
 
         binding.positionGroup.setOnCheckedChangeListener { _, checkedId ->
@@ -128,6 +159,48 @@ class SettingsFragment : Fragment() {
             }
             LyricsOverlayService.refresh(requireContext())
         }
+    }
+
+    private fun setupLyricThemeChips() {
+        binding.lyricThemeGroup.removeAllViews()
+        val current = settings.lyricTheme()
+        LyricThemePreset.entries.forEach { preset ->
+            val chip = Chip(requireContext()).apply {
+                text = preset.displayName
+                isCheckable = true
+                isChecked = preset == current
+                setOnClickListener {
+                    settings.setLyricTheme(preset)
+                    binding.playerFontSizeSlider.value = settings.playerFontSizeSp
+                    binding.playerNextFontSizeSlider.value = settings.playerNextFontSizeSp
+                    binding.fontSizeSlider.value = settings.fontSizeSp
+                    notifyLyricStyleChanged()
+                }
+            }
+            binding.lyricThemeGroup.addView(chip)
+        }
+    }
+
+    private fun setupLyricFontChips() {
+        binding.lyricFontGroup.removeAllViews()
+        val current = settings.lyricFontFamily()
+        LyricFontFamily.entries.forEach { family ->
+            val chip = Chip(requireContext()).apply {
+                text = family.displayName
+                isCheckable = true
+                isChecked = family == current
+                setOnClickListener {
+                    settings.setLyricFontFamily(family)
+                    notifyLyricStyleChanged()
+                }
+            }
+            binding.lyricFontGroup.addView(chip)
+        }
+    }
+
+    private fun notifyLyricStyleChanged() {
+        LyricsOverlayService.refresh(requireContext())
+        (activity as? MainHost)?.notifyLyricStyleChanged()
     }
 
     private fun addPresetPath(label: String) {

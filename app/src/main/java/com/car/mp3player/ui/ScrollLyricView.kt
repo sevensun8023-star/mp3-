@@ -4,10 +4,11 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.util.AttributeSet
+import android.view.Choreographer
 import android.view.View
 import com.car.mp3player.data.SettingsRepository
 import com.car.mp3player.model.LrcLine
-import kotlin.math.max
+import kotlin.math.abs
 
 class ScrollLyricView @JvmOverloads constructor(
     context: Context,
@@ -16,10 +17,34 @@ class ScrollLyricView @JvmOverloads constructor(
 ) : View(context, attrs, defStyleAttr) {
 
     private val settings = SettingsRepository(context)
-    private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val dimPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val sungPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val nextPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val pendingPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+
     private var lines: List<LrcLine> = emptyList()
-    private var positionMs: Long = 0L
+    private var targetPositionMs = 0L
+    private var displayPositionMs = 0f
+    private var smoothScrollY = 0f
+    private var targetScrollY = 0f
+    private var animating = false
+
+    private val frameCallback = Choreographer.FrameCallback {
+        if (!animating) return@FrameCallback
+        val smooth = settings.smoothLyrics
+        val lerp = if (smooth) 0.18f else 1f
+        displayPositionMs += (targetPositionMs - displayPositionMs) * lerp
+        computeTargetScroll()
+        smoothScrollY += (targetScrollY - smoothScrollY) * lerp
+        computeTargetScroll()
+        invalidate()
+        if (smooth && (abs(targetPositionMs - displayPositionMs) > 8f || abs(targetScrollY - smoothScrollY) > 0.5f)) {
+            Choreographer.getInstance().postFrameCallback(this)
+        } else {
+            displayPositionMs = targetPositionMs.toFloat()
+            smoothScrollY = targetScrollY
+            animating = false
+        }
+    }
 
     init {
         setWillNotDraw(false)
@@ -27,68 +52,87 @@ class ScrollLyricView @JvmOverloads constructor(
 
     fun update(lines: List<LrcLine>, positionMs: Long) {
         this.lines = lines
-        this.positionMs = positionMs
+        targetPositionMs = positionMs
+        if (!settings.smoothLyrics) {
+            displayPositionMs = positionMs.toFloat()
+            computeTargetScroll()
+            smoothScrollY = targetScrollY
+            invalidate()
+            return
+        }
+        computeTargetScroll()
+        if (!animating) {
+            animating = true
+            Choreographer.getInstance().postFrameCallback(frameCallback)
+        }
+    }
+
+    fun refreshStyle() {
         invalidate()
+    }
+
+    override fun onDetachedFromWindow() {
+        animating = false
+        Choreographer.getInstance().removeFrameCallback(frameCallback)
+        super.onDetachedFromWindow()
+    }
+
+    private fun computeTargetScroll() {
+        val pos = if (settings.smoothLyrics) targetPositionMs else displayPositionMs.toLong()
+        val idx = findIndex(pos)
+        val density = resources.displayMetrics.scaledDensity
+        val style = LyricRenderer.styleFrom(settings, density, forPlayer = true)
+        val blockH = style.currentSizePx * 1.35f * style.maxVisualLines + style.currentSizePx * 0.8f
+        targetScrollY = idx * blockH
     }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
+        val density = resources.displayMetrics.scaledDensity
+        val style = LyricRenderer.styleFrom(settings, density, forPlayer = true)
+
         if (lines.isEmpty()) {
-            dimPaint.color = settings.pendingColor
-            dimPaint.textSize = 20f * resources.displayMetrics.scaledDensity
-            canvas.drawText("♪ 暂无歌词", width / 2f - dimPaint.measureText("♪ 暂无歌词") / 2f, height / 2f, dimPaint)
+            LyricRenderer.drawWrappedStaticLine(
+                canvas, "♪ 暂无歌词", height / 2f, pendingPaint, style, width.toFloat(),
+                style.pendingColor, style.otherSizePx, 2
+            )
             return
         }
 
-        val currentIndex = findCurrentIndex()
-        val fontSize = settings.fontSizeSp * resources.displayMetrics.scaledDensity
-        val lineHeight = fontSize * 1.55f
+        val idx = findIndex(displayPositionMs.toLong())
+        val blockH = style.currentSizePx * 1.35f * style.maxVisualLines + style.currentSizePx * 0.8f
+        val centerY = height / 2f - smoothScrollY + idx * blockH
 
-        val centerY = height / 2f
-        val startIndex = max(0, currentIndex - 2)
-        val endIndex = minOf(lines.lastIndex, currentIndex + 4)
+        val start = (idx - 2).coerceAtLeast(0)
+        val end = (idx + 3).coerceAtMost(lines.lastIndex)
 
-        for (i in startIndex..endIndex) {
-            val line = lines[i]
-            val relativeIndex = i - currentIndex
-            val baseline = centerY + relativeIndex * lineHeight
-            if (i == currentIndex) {
-                drawKaraokeLine(canvas, line, positionMs, baseline, fontSize)
+        var y = centerY - (idx - start) * blockH
+        for (i in start..end) {
+            if (i == idx) {
+                LyricRenderer.drawKaraokeLine(
+                    canvas, lines[i], displayPositionMs.toLong(), y + blockH / 2f,
+                    style, width.toFloat(), sungPaint, pendingPaint
+                )
             } else {
-                dimPaint.textSize = if (kotlin.math.abs(relativeIndex) == 1) fontSize * 0.92f else fontSize * 0.78f
-                dimPaint.color = if (i < currentIndex) settings.nextLineColor else settings.pendingColor
-                val text = line.text
-                canvas.drawText(text, (width - dimPaint.measureText(text)) / 2f, baseline, dimPaint)
+                val size = when {
+                    abs(i - idx) == 1 -> style.nextSizePx
+                    else -> style.otherSizePx
+                }
+                val color = if (i < idx) style.nextLineColor else style.pendingColor
+                LyricRenderer.drawWrappedStaticLine(
+                    canvas, lines[i].text, y + blockH / 2f, nextPaint, style,
+                    width.toFloat(), color, size, style.maxVisualLines
+                )
             }
+            y += blockH
         }
     }
 
-    private fun findCurrentIndex(): Int {
+    private fun findIndex(positionMs: Long): Int {
         var index = 0
         for (i in lines.indices) {
             if (positionMs >= lines[i].startTimeMs) index = i else break
         }
         return index
-    }
-
-    private fun drawKaraokeLine(canvas: Canvas, line: LrcLine, positionMs: Long, baselineY: Float, fontSize: Float) {
-        val chars = line.chars
-        if (chars.isEmpty()) return
-        var sungIndex = -1
-        for (i in chars.indices) {
-            if (positionMs >= chars[i].startTimeMs) sungIndex = i
-        }
-        val fullText = line.text
-        textPaint.textSize = fontSize
-        dimPaint.textSize = fontSize
-        var x = max(paddingLeft.toFloat(), (width - dimPaint.measureText(fullText)) / 2f)
-        for (i in chars.indices) {
-            val ch = chars[i].char
-            val paint = if (i <= sungIndex) textPaint else dimPaint
-            paint.color = if (i <= sungIndex) settings.highlightColor else settings.pendingColor
-            paint.textSize = if (i == sungIndex) fontSize * 1.08f else fontSize
-            canvas.drawText(ch, x, baselineY, paint)
-            x += paint.measureText(ch)
-        }
     }
 }

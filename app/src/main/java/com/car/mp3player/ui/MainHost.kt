@@ -5,4 +5,5 @@ interface MainHost {
     fun switchToTab(index: Int)
     fun scanMusic(onDone: ((Int) -> Unit)? = null)
     fun allSongs(): List<com.car.mp3player.model.Song>
+    fun notifyLyricStyleChanged()
 }

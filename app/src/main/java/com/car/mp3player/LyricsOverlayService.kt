@@ -49,7 +49,9 @@ class LyricsOverlayService : Service() {
     private fun showOverlay() {
         if (overlayView != null) return
         val view = KaraokeLyricView(this)
-        val heightPx = (settings.fontSizeSp * 3.2f * resources.displayMetrics.density).toInt()
+        val density = resources.displayMetrics.density
+        val maxLines = settings.maxLyricVisualLines.coerceIn(1, 4)
+        val heightPx = ((settings.fontSizeSp * maxLines * 2.8f + 24f) * density).toInt()
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             heightPx,

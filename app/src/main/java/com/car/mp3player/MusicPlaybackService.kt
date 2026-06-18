@@ -47,7 +47,7 @@ class MusicPlaybackService : Service() {
         override fun run() {
             val p = player ?: return
             val song = playlist.getOrNull(currentIndex)
-            PlaybackStateHolder.update(song, p.isPlaying, p.currentPosition, currentLines)
+            PlaybackStateHolder.update(song, p.isPlaying, p.currentPosition, currentLines, p.duration.coerceAtLeast(0L))
             LyricsOverlayService.updateLyrics(applicationContext, PlaybackStateHolder.lyricState)
             if (++saveTick % 25 == 0) {
                 persistProgress(song, p.currentPosition)
@@ -73,8 +73,12 @@ class MusicPlaybackService : Service() {
             ACTION_PLAY_INDEX -> {
                 val index = intent.getIntExtra(EXTRA_INDEX, 0)
                 val seek = intent.getLongExtra(EXTRA_SEEK, 0L)
-                val list = readPlaylist(intent)?.map { it.toSong() } ?: playlist
-                startPlaylist(list, index, seek)
+                val list = readPlaylist(intent)?.map { it.toSong() }
+                if (list != null) {
+                    startPlaylist(list, index, seek)
+                } else if (playlist.isNotEmpty()) {
+                    playSongAt(index.coerceIn(0, playlist.lastIndex), seek)
+                }
             }
             ACTION_TOGGLE -> togglePlayPause()
             ACTION_NEXT -> playNext()
@@ -84,6 +88,10 @@ class MusicPlaybackService : Service() {
                 setPlayMode(mode)
             }
             ACTION_RESUME -> resumeLast()
+            ACTION_SEEK -> {
+                val seek = intent.getLongExtra(EXTRA_SEEK, 0L)
+                player?.seekTo(seek.coerceAtLeast(0L))
+            }
             ACTION_STOP -> stopSelf()
         }
         return START_STICKY
@@ -126,7 +134,7 @@ class MusicPlaybackService : Service() {
         handler.removeCallbacks(progressRunnable)
         handler.post(progressRunnable)
         persistProgress(song, seekMs)
-        PlaybackStateHolder.update(song, true, seekMs, currentLines)
+        PlaybackStateHolder.update(song, true, seekMs, currentLines, player?.duration?.coerceAtLeast(0L) ?: 0L)
         LyricsOverlayService.start(applicationContext)
         LyricsOverlayService.updateLyrics(applicationContext, PlaybackStateHolder.lyricState)
         loadMetadataAsync(song)
@@ -160,7 +168,8 @@ class MusicPlaybackService : Service() {
                         song,
                         p?.isPlaying == true,
                         p?.currentPosition ?: 0L,
-                        currentLines
+                        currentLines,
+                        p?.duration?.coerceAtLeast(0L) ?: PlaybackStateHolder.durationMs
                     )
                     LyricsOverlayService.updateLyrics(applicationContext, PlaybackStateHolder.lyricState)
                 }
@@ -177,7 +186,7 @@ class MusicPlaybackService : Service() {
         if (p.isPlaying) p.pause() else p.play()
         val song = playlist.getOrNull(currentIndex)
         updateNotification(song?.title ?: getString(R.string.app_name))
-        PlaybackStateHolder.update(song, p.isPlaying, p.currentPosition, currentLines)
+        PlaybackStateHolder.update(song, p.isPlaying, p.currentPosition, currentLines, p.duration.coerceAtLeast(0L))
         persistProgress(song, p.currentPosition)
     }
 
@@ -268,6 +277,7 @@ class MusicPlaybackService : Service() {
         const val ACTION_PREV = "prev"
         const val ACTION_SET_MODE = "set_mode"
         const val ACTION_RESUME = "resume"
+        const val ACTION_SEEK = "seek"
         const val ACTION_STOP = "stop"
         const val EXTRA_INDEX = "index"
         const val EXTRA_SEEK = "seek"

@@ -4,6 +4,8 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.content.edit
+import com.car.mp3player.model.LyricFontFamily
+import com.car.mp3player.model.LyricThemePreset
 import com.car.mp3player.model.ThemeMode
 
 class SettingsRepository(context: Context) {
@@ -11,19 +13,43 @@ class SettingsRepository(context: Context) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     var fontSizeSp: Float
-        get() = prefs.getFloat(KEY_FONT_SIZE, 28f)
+        get() = prefs.getFloat(KEY_FONT_SIZE, 24f)
         set(value) = prefs.edit { putFloat(KEY_FONT_SIZE, value) }
 
+    var playerFontSizeSp: Float
+        get() = prefs.getFloat(KEY_PLAYER_FONT_SIZE, 20f)
+        set(value) = prefs.edit { putFloat(KEY_PLAYER_FONT_SIZE, value) }
+
+    var playerNextFontSizeSp: Float
+        get() = prefs.getFloat(KEY_PLAYER_NEXT_FONT_SIZE, 17f)
+        set(value) = prefs.edit { putFloat(KEY_PLAYER_NEXT_FONT_SIZE, value) }
+
+    var currentLineScale: Float
+        get() = prefs.getFloat(KEY_CURRENT_SCALE, 1.05f)
+        set(value) = prefs.edit { putFloat(KEY_CURRENT_SCALE, value) }
+
+    var nextLineScale: Float
+        get() = prefs.getFloat(KEY_NEXT_SCALE, 0.92f)
+        set(value) = prefs.edit { putFloat(KEY_NEXT_SCALE, value) }
+
+    var maxLyricVisualLines: Int
+        get() = prefs.getInt(KEY_MAX_VISUAL_LINES, 2).coerceIn(1, 4)
+        set(value) = prefs.edit { putInt(KEY_MAX_VISUAL_LINES, value.coerceIn(1, 4)) }
+
+    var smoothLyrics: Boolean
+        get() = prefs.getBoolean(KEY_SMOOTH_LYRICS, true)
+        set(value) = prefs.edit { putBoolean(KEY_SMOOTH_LYRICS, value) }
+
     var highlightColor: Int
-        get() = prefs.getInt(KEY_HIGHLIGHT, 0xFFEC4141.toInt())
+        get() = prefs.getInt(KEY_HIGHLIGHT, LyricThemePreset.NETEASE.highlightColor)
         set(value) = prefs.edit { putInt(KEY_HIGHLIGHT, value) }
 
     var pendingColor: Int
-        get() = prefs.getInt(KEY_PENDING, 0x661F1F1F)
+        get() = prefs.getInt(KEY_PENDING, LyricThemePreset.NETEASE.pendingColor)
         set(value) = prefs.edit { putInt(KEY_PENDING, value) }
 
     var nextLineColor: Int
-        get() = prefs.getInt(KEY_NEXT, 0x44888888)
+        get() = prefs.getInt(KEY_NEXT, LyricThemePreset.NETEASE.nextLineColor)
         set(value) = prefs.edit { putInt(KEY_NEXT, value) }
 
     var overlayPosition: Int
@@ -66,32 +92,46 @@ class SettingsRepository(context: Context) {
         get() = prefs.getBoolean(KEY_ONLINE_COVER, true)
         set(value) = prefs.edit { putBoolean(KEY_ONLINE_COVER, value) }
 
-    fun scanPaths(): List<String> {
-        return scanPathsText.lines()
-            .map { it.trim() }
-            .filter { it.isNotEmpty() }
+    fun lyricTheme(): LyricThemePreset = LyricThemePreset.fromId(
+        prefs.getString(KEY_LYRIC_THEME, LyricThemePreset.NETEASE.id) ?: LyricThemePreset.NETEASE.id
+    )
+
+    fun lyricFontFamily(): LyricFontFamily = LyricFontFamily.fromId(
+        prefs.getString(KEY_LYRIC_FONT, LyricFontFamily.DEFAULT.id) ?: LyricFontFamily.DEFAULT.id
+    )
+
+    fun setLyricTheme(preset: LyricThemePreset) {
+        prefs.edit {
+            putString(KEY_LYRIC_THEME, preset.id)
+            putInt(KEY_HIGHLIGHT, preset.highlightColor)
+            putInt(KEY_PENDING, preset.pendingColor)
+            putInt(KEY_NEXT, preset.nextLineColor)
+            putFloat(KEY_PLAYER_FONT_SIZE, preset.playerCurrentSizeSp)
+            putFloat(KEY_PLAYER_NEXT_FONT_SIZE, preset.playerNextSizeSp)
+            putFloat(KEY_FONT_SIZE, preset.overlaySizeSp)
+        }
     }
 
-    fun scanTreeUris(): List<String> {
-        return scanTreeUrisText.lines()
-            .map { it.trim() }
-            .filter { it.isNotEmpty() }
+    fun setLyricFontFamily(family: LyricFontFamily) {
+        prefs.edit { putString(KEY_LYRIC_FONT, family.id) }
     }
+
+    fun scanPaths(): List<String> =
+        scanPathsText.lines().map { it.trim() }.filter { it.isNotEmpty() }
+
+    fun scanTreeUris(): List<String> =
+        scanTreeUrisText.lines().map { it.trim() }.filter { it.isNotEmpty() }
 
     fun allScanEntries(): List<String> = scanPaths() + scanTreeUris()
 
     fun addScanPath(path: String) {
         val paths = scanPaths().toMutableSet()
-        if (paths.add(path)) {
-            scanPathsText = paths.joinToString("\n")
-        }
+        if (paths.add(path)) scanPathsText = paths.joinToString("\n")
     }
 
     fun addScanTreeUri(uri: String) {
         val uris = scanTreeUris().toMutableSet()
-        if (uris.add(uri)) {
-            scanTreeUrisText = uris.joinToString("\n")
-        }
+        if (uris.add(uri)) scanTreeUrisText = uris.joinToString("\n")
     }
 
     fun removeScanEntry(entry: String) {
@@ -118,6 +158,12 @@ class SettingsRepository(context: Context) {
     companion object {
         const val PREFS_NAME = "mp3_player_settings"
         const val KEY_FONT_SIZE = "font_size"
+        const val KEY_PLAYER_FONT_SIZE = "player_font_size"
+        const val KEY_PLAYER_NEXT_FONT_SIZE = "player_next_font_size"
+        const val KEY_CURRENT_SCALE = "current_line_scale"
+        const val KEY_NEXT_SCALE = "next_line_scale"
+        const val KEY_MAX_VISUAL_LINES = "max_visual_lines"
+        const val KEY_SMOOTH_LYRICS = "smooth_lyrics"
         const val KEY_HIGHLIGHT = "highlight_color"
         const val KEY_PENDING = "pending_color"
         const val KEY_NEXT = "next_line_color"
@@ -125,6 +171,8 @@ class SettingsRepository(context: Context) {
         const val KEY_OVERLAY = "overlay_enabled"
         const val KEY_AUTO_RESUME = "auto_resume"
         const val KEY_THEME = "theme_mode"
+        const val KEY_LYRIC_THEME = "lyric_theme"
+        const val KEY_LYRIC_FONT = "lyric_font"
         const val KEY_LAST_SONG = "last_song_path"
         const val KEY_LAST_POSITION = "last_position_ms"
         const val KEY_SCAN_PATHS = "scan_paths"

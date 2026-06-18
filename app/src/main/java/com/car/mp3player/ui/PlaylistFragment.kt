@@ -28,13 +28,18 @@ class PlaylistFragment : Fragment(), PlaybackStateHolder.Listener {
         return binding.root
     }
 
+    private var lastClickMs = 0L
+
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         adapter = SongAdapter { song, _ ->
+            val now = System.currentTimeMillis()
+            if (now - lastClickMs < 280) return@SongAdapter
+            lastClickMs = now
+            (activity as? MainHost)?.switchToTab(1)
             val index = (activity as? MainHost)?.allSongs()?.indexOfFirst { it.path == song.path } ?: -1
             if (index >= 0) {
                 (activity as? MainHost)?.playSongAt(index)
-                (activity as? MainHost)?.switchToTab(1)
             }
         }
         binding.songList.layoutManager = LinearLayoutManager(requireContext())
@@ -83,7 +88,6 @@ class PlaylistFragment : Fragment(), PlaybackStateHolder.Listener {
         lines: List<com.car.mp3player.model.LrcLine>
     ) {
         adapter.playingPath = song?.path
-        adapter.notifyDataSetChanged()
     }
 
     override fun onPlaylistChanged(songs: List<Song>) {

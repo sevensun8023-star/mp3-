@@ -32,7 +32,16 @@
     <string name="settings_lyrics">歌词设置</string>
     <string name="settings_overlay">悬浮歌词</string>
     <string name="settings_overlay_grant">开启悬浮窗权限</string>
-    <string name="font_size">歌词字号</string>
+    <string name="font_size">悬浮歌词字号</string>
+    <string name="lyric_theme">歌词主题</string>
+    <string name="lyric_font">歌词字体</string>
+    <string name="smooth_lyrics">歌词平滑滚动</string>
+    <string name="player_font_size">播放页当前行字号</string>
+    <string name="player_next_font_size">播放页下一行字号</string>
+    <string name="overlay_font_size">悬浮歌词字号</string>
+    <string name="current_line_scale">当前行放大比例</string>
+    <string name="next_line_scale">下一行缩小比例</string>
+    <string name="max_lyric_lines">歌词最多显示行数</string>
     <string name="highlight_color">已唱颜色</string>
     <string name="overlay_position">悬浮位置</string>
     <string name="position_top">顶部</string>

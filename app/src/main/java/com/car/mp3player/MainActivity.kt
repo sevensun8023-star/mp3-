@@ -16,6 +16,7 @@ import com.car.mp3player.model.Song
 import com.car.mp3player.playback.PlaybackStateHolder
 import com.car.mp3player.ui.MainHost
 import com.car.mp3player.ui.MainPagerAdapter
+import com.car.mp3player.ui.PlayerFragment
 import com.car.mp3player.ui.PlaylistFragment
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -62,12 +63,24 @@ class MainActivity : AppCompatActivity(), MainHost {
         val intent = Intent(this, MusicPlaybackService::class.java).apply {
             action = MusicPlaybackService.ACTION_PLAY_INDEX
             putExtra(MusicPlaybackService.EXTRA_INDEX, index)
-            putParcelableArrayListExtra(
-                MusicPlaybackService.EXTRA_PLAYLIST,
-                ArrayList(songs.map { SongParcelable.from(it) })
-            )
+            if (!samePlaylist(PlaybackStateHolder.songs, songs)) {
+                putParcelableArrayListExtra(
+                    MusicPlaybackService.EXTRA_PLAYLIST,
+                    ArrayList(songs.map { SongParcelable.from(it) })
+                )
+            }
         }
         ContextCompat.startForegroundService(this, intent)
+    }
+
+    override fun notifyLyricStyleChanged() {
+        (supportFragmentManager.findFragmentByTag("f1") as? PlayerFragment)?.refreshLyricStyle()
+    }
+
+    private fun samePlaylist(a: List<Song>, b: List<Song>): Boolean {
+        if (a.size != b.size) return false
+        if (a.isEmpty()) return true
+        return a.first().path == b.first().path && a.last().path == b.last().path
     }
 
     override fun switchToTab(index: Int) {
