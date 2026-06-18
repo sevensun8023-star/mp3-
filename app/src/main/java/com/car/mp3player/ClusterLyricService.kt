@@ -82,6 +82,13 @@ class ClusterLyricService : Service(), PlaybackStateHolder.Listener {
         attachedDisplayId = Display.INVALID_DISPLAY
     }
 
+    fun refreshPresentation() {
+        hidePresentation()
+        if (!settings.clusterLyricsEnabled) return
+        showPresentationIfPossible()
+        presentation?.refreshStyle()
+    }
+
     companion object {
         private var instance: ClusterLyricService? = null
 
@@ -95,13 +102,7 @@ class ClusterLyricService : Service(), PlaybackStateHolder.Listener {
         }
 
         fun refresh(context: Context) {
-            instance?.let {
-                it.hidePresentation()
-                if (SettingsRepository(context).clusterLyricsEnabled) {
-                    it.showPresentationIfPossible()
-                    it.presentation?.refreshStyle()
-                }
-            } ?: start(context)
+            instance?.refreshPresentation() ?: start(context)
         }
     }
 }

@@ -2,7 +2,6 @@ package com.car.mp3player
 
 import android.app.Presentation
 import android.content.Context
-import android.hardware.display.DisplayManager
 import android.os.Bundle
 import android.view.Display
 import android.view.WindowManager
@@ -19,7 +18,7 @@ class ClusterLyricPresentation(
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        val view = ScrollLyricView(context)
+        val view = ScrollLyricView(getContext())
         lyricView = view
         setContentView(view)
     }
