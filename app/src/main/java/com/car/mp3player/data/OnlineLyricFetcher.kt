@@ -13,11 +13,10 @@ class OnlineLyricFetcher {
         val queries = buildSearchQueries(title, artist)
         for ((track, singer) in queries) {
             val providers = listOf(
-                { fetchFromLrcLib(track, singer) },
                 { fetchFromNetease(track, singer) },
                 { fetchFromKugou(track, singer) },
                 { fetchFromQqMusic(track, singer) },
-                { fetchFromLyricsOvh(track, singer) }
+                { fetchFromLrcLib(track, singer) }
             )
             for (provider in providers) {
                 val lines = runCatching { provider() }.getOrNull()

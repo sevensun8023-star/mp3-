@@ -44,6 +44,7 @@ class MusicPlaybackService : Service() {
     private var currentLines = emptyList<com.car.mp3player.model.LrcLine>()
     private var shuffleQueue = mutableListOf<Int>()
     private var saveTick = 0
+    private var lastClusterMetadataKey = ""
     private val metadataScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val metadataLoader by lazy {
         SongMetadataLoader(cacheDir, settings, coverFetcher = com.car.mp3player.data.CoverArtFetcher(this))
@@ -55,6 +56,7 @@ class MusicPlaybackService : Service() {
             val song = playlist.getOrNull(currentIndex)
             PlaybackStateHolder.update(song, p.isPlaying, p.currentPosition, currentLines, p.duration.coerceAtLeast(0L))
             LyricsOverlayService.updateLyrics(applicationContext, PlaybackStateHolder.lyricState)
+            updateClusterMetadata(song, p.currentPosition)
             if (++saveTick % 25 == 0) {
                 persistProgress(song, p.currentPosition)
             }
@@ -138,6 +140,7 @@ class MusicPlaybackService : Service() {
         if (index !in playlist.indices) return
         currentIndex = index
         val song = playlist[index]
+        lastClusterMetadataKey = ""
         PlaybackStateHolder.setCoverArt(null)
         currentLines = loadLocalLyrics(song)
 
@@ -161,6 +164,7 @@ class MusicPlaybackService : Service() {
         handler.post(progressRunnable)
         persistProgress(song, seekMs)
         PlaybackStateHolder.update(song, true, seekMs, currentLines, exoPlayer?.duration?.coerceAtLeast(0L) ?: 0L)
+        updateClusterMetadata(song, seekMs)
         LyricsOverlayService.start(applicationContext)
         LyricsOverlayService.updateLyrics(applicationContext, PlaybackStateHolder.lyricState)
         ClusterLyricService.start(applicationContext)
@@ -275,6 +279,32 @@ class MusicPlaybackService : Service() {
         }
     }
 
+    private fun updateClusterMetadata(song: Song?, positionMs: Long) {
+        if (song == null) return
+        val lyricLine = LrcParser.findState(currentLines, positionMs).currentLine?.text
+        val subtitle = lyricLine?.takeIf { it.isNotBlank() } ?: song.artist
+        val key = "${song.path}|$subtitle"
+        if (key == lastClusterMetadataKey) return
+        lastClusterMetadataKey = key
+        val metadata = MediaMetadata.Builder()
+            .setTitle(song.title)
+            .setArtist(song.artist)
+            .setAlbumTitle(song.artist)
+            .setDisplayTitle(song.title)
+            .setSubtitle(subtitle)
+            .setDescription(lyricLine ?: song.title)
+            .build()
+        val player = exoPlayer ?: return
+        val index = player.currentMediaItemIndex
+        if (index < 0) return
+        val current = player.currentMediaItem ?: return
+        player.replaceMediaItem(
+            index,
+            current.buildUpon().setMediaMetadata(metadata).build()
+        )
+        updateNotification(song, subtitle)
+    }
+
     private fun persistProgress(song: Song?, positionMs: Long) {
         if (song == null) return
         settings.lastSongPath = song.path
@@ -307,17 +337,18 @@ class MusicPlaybackService : Service() {
         getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
 
-    private fun buildNotification(song: Song?): Notification {
+    private fun buildNotification(song: Song?, subtitle: String? = null): Notification {
         val session = mediaSession
         val title = song?.title ?: getString(R.string.app_name)
-        val subtitle = song?.artist?.takeIf { it.isNotBlank() } ?: getString(R.string.now_playing)
+        val line = subtitle?.takeIf { it.isNotBlank() }
+        val text = line ?: song?.artist?.takeIf { it.isNotBlank() } ?: getString(R.string.now_playing)
         val open = PendingIntent.getActivity(
             this, 0, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(title)
-            .setContentText(subtitle)
+            .setContentText(text)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentIntent(open)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
@@ -329,8 +360,8 @@ class MusicPlaybackService : Service() {
         return builder.build()
     }
 
-    private fun updateNotification(song: Song?) {
-        getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, buildNotification(song))
+    private fun updateNotification(song: Song?, subtitle: String? = null) {
+        getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, buildNotification(song, subtitle))
     }
 
     companion object {

@@ -2,9 +2,7 @@ package com.car.mp3player.ui
 
 import android.content.Intent
 import android.graphics.BitmapFactory
-import android.graphics.RenderEffect
-import android.graphics.Shader
-import android.os.Build
+import android.graphics.Color
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -21,6 +19,7 @@ import com.car.mp3player.databinding.FragmentPlayerBinding
 import com.car.mp3player.model.PlaybackMode
 import com.car.mp3player.model.Song
 import com.car.mp3player.playback.PlaybackStateHolder
+import com.car.mp3player.util.AlbumColorExtractor
 import com.google.android.material.slider.Slider
 import kotlin.math.max
 
@@ -29,6 +28,8 @@ class PlayerFragment : Fragment(), PlaybackStateHolder.Listener {
     private val binding get() = _binding!!
     private var userSeeking = false
     private lateinit var settings: SettingsRepository
+    private var showLyrics = false
+    private var defaultThemeColor = Color.parseColor("#FF1A1410")
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentPlayerBinding.inflate(inflater, container, false)
@@ -54,11 +55,14 @@ class PlayerFragment : Fragment(), PlaybackStateHolder.Listener {
             }
         })
 
+        binding.vinylRecord.setOnClickListener { togglePlayerView() }
+        binding.scrollLyricView.setOnClickListener { togglePlayerView() }
         binding.scrollLyricView.setOnLongClickListener {
             showLyricSearchDialog()
             true
         }
 
+        applyPlayerViewMode()
         renderState()
         renderCover(PlaybackStateHolder.coverArtPath)
         updateProgressUi(PlaybackStateHolder.positionMs, PlaybackStateHolder.durationMs)
@@ -81,6 +85,7 @@ class PlayerFragment : Fragment(), PlaybackStateHolder.Listener {
         lines: List<com.car.mp3player.model.LrcLine>
     ) {
         renderState()
+        binding.vinylRecord.setPlaying(playing)
         binding.scrollLyricView.update(lines, positionMs)
         if (!userSeeking) updateProgressUi(positionMs, PlaybackStateHolder.durationMs)
     }
@@ -97,6 +102,16 @@ class PlayerFragment : Fragment(), PlaybackStateHolder.Listener {
         if (!userSeeking) updateProgressUi(PlaybackStateHolder.positionMs, durationMs)
     }
 
+    private fun togglePlayerView() {
+        showLyrics = !showLyrics
+        applyPlayerViewMode()
+    }
+
+    private fun applyPlayerViewMode() {
+        binding.vinylRecord.visibility = if (showLyrics) View.GONE else View.VISIBLE
+        binding.scrollLyricView.visibility = if (showLyrics) View.VISIBLE else View.GONE
+    }
+
     private fun renderState() {
         val song = PlaybackStateHolder.currentSong
         binding.songTitle.text = song?.title ?: getString(R.string.app_name)
@@ -104,6 +119,7 @@ class PlayerFragment : Fragment(), PlaybackStateHolder.Listener {
         binding.btnPlayPause.setImageResource(
             if (PlaybackStateHolder.isPlaying) R.drawable.ic_pause else R.drawable.ic_play
         )
+        binding.vinylRecord.setPlaying(PlaybackStateHolder.isPlaying)
         binding.scrollLyricView.update(PlaybackStateHolder.lrcLines, PlaybackStateHolder.positionMs)
         updateModeUi(PlaybackStateHolder.playMode)
     }
@@ -127,31 +143,17 @@ class PlayerFragment : Fragment(), PlaybackStateHolder.Listener {
 
     private fun renderCover(coverPath: String?) {
         if (coverPath.isNullOrBlank()) {
-            binding.coverBackground.setImageResource(R.drawable.bg_album_placeholder)
-            clearBlur()
+            binding.themeBackground.setBackgroundColor(defaultThemeColor)
+            binding.vinylRecord.setCoverBitmap(null)
             return
         }
         val bitmap = runCatching { BitmapFactory.decodeFile(coverPath) }.getOrNull()
         if (bitmap != null) {
-            binding.coverBackground.setImageBitmap(bitmap)
-            applyBlur()
+            binding.themeBackground.setBackgroundColor(AlbumColorExtractor.backgroundColor(bitmap))
+            binding.vinylRecord.setCoverBitmap(bitmap)
         } else {
-            binding.coverBackground.setImageResource(R.drawable.bg_album_placeholder)
-            clearBlur()
-        }
-    }
-
-    private fun applyBlur() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            binding.coverBackground.setRenderEffect(
-                RenderEffect.createBlurEffect(18f, 18f, Shader.TileMode.CLAMP)
-            )
-        }
-    }
-
-    private fun clearBlur() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            binding.coverBackground.setRenderEffect(null)
+            binding.themeBackground.setBackgroundColor(defaultThemeColor)
+            binding.vinylRecord.setCoverBitmap(null)
         }
     }
 

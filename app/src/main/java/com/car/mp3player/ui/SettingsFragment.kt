@@ -26,12 +26,16 @@ import com.car.mp3player.model.LyricThemePreset
 import com.car.mp3player.model.ThemeMode
 import com.google.android.material.chip.Chip
 import com.google.android.material.chip.ChipGroup
+import com.google.android.material.switchmaterial.SwitchMaterial
 
 class SettingsFragment : Fragment() {
     private var _binding: FragmentSettingsBinding? = null
     private val binding get() = _binding!!
     private lateinit var settings: SettingsRepository
     private var appThemeChipGroup: ChipGroup? = null
+    private var switchBootOpenApp: SwitchMaterial? = null
+    private var switchBootReturnHome: SwitchMaterial? = null
+    private var switchOverlayBold: SwitchMaterial? = null
 
     private val overlayPermission = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -60,6 +64,7 @@ class SettingsFragment : Fragment() {
         settings = SettingsRepository(requireContext())
         binding.switchAutoResume.isChecked = settings.autoResumePlayback
         binding.switchBootAutoStart.isChecked = settings.bootAutoStart
+        setupBootExtraSwitches()
         binding.switchClusterLyrics.isChecked = settings.clusterLyricsEnabled
         binding.switchOverlay.isChecked = settings.overlayEnabled
         binding.switchOnlineLyrics.isChecked = settings.onlineLyricsEnabled
@@ -156,6 +161,7 @@ class SettingsFragment : Fragment() {
             settings.fontSizeSp = value
             LyricsOverlayService.refresh(requireContext())
         }
+        setupOverlayBoldSwitch()
         binding.currentLineScaleSlider.addOnChangeListener { _, value, _ ->
             settings.currentLineScale = value
             notifyLyricStyleChanged()
@@ -179,6 +185,45 @@ class SettingsFragment : Fragment() {
         }
 
         AppThemeManager.applyFragmentRoot(binding.root, AppThemeManager.palette(requireContext(), settings))
+    }
+
+    private fun setupBootExtraSwitches() {
+        val parent = binding.switchBootAutoStart.parent as? LinearLayout ?: return
+        switchBootOpenApp?.let { parent.removeView(it) }
+        switchBootReturnHome?.let { parent.removeView(it) }
+
+        val openApp = SwitchMaterial(requireContext()).apply {
+            text = getString(R.string.boot_open_app)
+            isChecked = settings.bootOpenApp
+            setOnCheckedChangeListener { _, checked -> settings.bootOpenApp = checked }
+        }
+        val returnHome = SwitchMaterial(requireContext()).apply {
+            text = getString(R.string.boot_return_home)
+            isChecked = settings.bootReturnHome
+            setOnCheckedChangeListener { _, checked -> settings.bootReturnHome = checked }
+        }
+        val insertAt = parent.indexOfChild(binding.switchBootAutoStart) + 1
+        parent.addView(openApp, insertAt)
+        parent.addView(returnHome, insertAt + 1)
+        switchBootOpenApp = openApp
+        switchBootReturnHome = returnHome
+    }
+
+    private fun setupOverlayBoldSwitch() {
+        val parent = binding.fontSizeSlider.parent as? LinearLayout ?: return
+        switchOverlayBold?.let { parent.removeView(it) }
+        val boldSwitch = SwitchMaterial(requireContext()).apply {
+            text = getString(R.string.overlay_lyric_bold)
+            isChecked = settings.overlayLyricBold
+            setOnCheckedChangeListener { _, checked ->
+                settings.overlayLyricBold = checked
+                notifyLyricStyleChanged()
+                LyricsOverlayService.refresh(requireContext())
+            }
+        }
+        val insertAt = parent.indexOfChild(binding.fontSizeSlider) + 1
+        parent.addView(boldSwitch, insertAt)
+        switchOverlayBold = boldSwitch
     }
 
     private fun setupAppThemeChips() {

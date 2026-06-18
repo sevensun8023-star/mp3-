@@ -4,6 +4,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.hardware.display.DisplayManager
+import android.os.Build
 import android.os.IBinder
 import android.view.Display
 import com.car.mp3player.data.SettingsRepository
@@ -54,7 +55,7 @@ class ClusterLyricService : Service(), PlaybackStateHolder.Listener {
         positionMs: Long,
         lines: List<LrcLine>
     ) {
-        presentation?.update(lines, positionMs)
+        presentation?.update(song, lines, positionMs)
     }
 
     private fun showPresentationIfPossible() {
@@ -70,6 +71,12 @@ class ClusterLyricService : Service(), PlaybackStateHolder.Listener {
     private fun findClusterDisplay(): Display? {
         val manager = getSystemService(DisplayManager::class.java) ?: return null
         val displays = manager.displays
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            displays.firstOrNull {
+                it.displayId != Display.DEFAULT_DISPLAY &&
+                    (it.flags and Display.FLAG_PRESENTATION) != 0
+            }?.let { return it }
+        }
         return displays
             .filter { it.displayId != Display.DEFAULT_DISPLAY }
             .minByOrNull { it.mode?.physicalWidth ?: Int.MAX_VALUE }

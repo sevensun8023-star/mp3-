@@ -13,6 +13,7 @@ import com.car.mp3player.playback.PlaybackStateHolder
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -36,7 +37,9 @@ class BootResumeService : Service() {
                 PlaybackBootstrap.resumeIfNeeded(this@BootResumeService, cached, settings)
             }
 
-            launchMainActivityIfNeeded()
+            if (settings.bootOpenApp) {
+                launchMainActivity()
+            }
 
             withContext(Dispatchers.IO) {
                 val scanned = PlaybackBootstrap.scanSongs(this@BootResumeService, settings)
@@ -48,20 +51,32 @@ class BootResumeService : Service() {
                 }
             }
 
+            if (settings.bootReturnHome && settings.bootAutoStart) {
+                delay(1200)
+                returnToHome()
+            }
+
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
         }
         return START_NOT_STICKY
     }
 
-    private fun launchMainActivityIfNeeded() {
-        if (!settings.bootAutoStart) return
+    private fun launchMainActivity() {
         val launchIntent = Intent(this, MainActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
             addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
         }
         startActivity(launchIntent)
+    }
+
+    private fun returnToHome() {
+        val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+            addCategory(Intent.CATEGORY_HOME)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        startActivity(homeIntent)
     }
 
     override fun onBind(intent: Intent?): IBinder? = null

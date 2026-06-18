@@ -23,33 +23,40 @@ object LyricRenderer {
         val typeface: Typeface?,
         val maxVisualLines: Int,
         val currentScale: Float,
-        val nextScale: Float
+        val nextScale: Float,
+        val bold: Boolean
     )
 
     fun styleFrom(settings: SettingsRepository, density: Float, forPlayer: Boolean): Style {
-        val preset = settings.lyricTheme()
-        val baseCurrent = if (forPlayer) settings.playerFontSizeSp else preset.playerCurrentSizeSp
-        val baseNext = if (forPlayer) settings.playerNextFontSizeSp else preset.playerNextSizeSp
-        val baseOther = if (forPlayer) settings.playerFontSizeSp * 0.82f else settings.fontSizeSp * 0.85f
+        val overlaySize = settings.fontSizeSp
+        val baseCurrent = if (forPlayer) settings.playerFontSizeSp else overlaySize
+        val baseNext = if (forPlayer) settings.playerNextFontSizeSp else overlaySize * 0.88f
+        val baseOther = if (forPlayer) settings.playerFontSizeSp * 0.82f else overlaySize * 0.85f
+        val family = settings.lyricFontFamily()
+        val bold = !forPlayer && settings.overlayLyricBold
         return Style(
             highlightColor = settings.highlightColor,
             pendingColor = settings.pendingColor,
             nextLineColor = settings.nextLineColor,
-            currentSizePx = baseCurrent * density * settings.currentLineScale,
-            nextSizePx = baseNext * density * settings.nextLineScale,
+            currentSizePx = baseCurrent * density * if (forPlayer) settings.currentLineScale else 1f,
+            nextSizePx = baseNext * density * if (forPlayer) settings.nextLineScale else 1f,
             otherSizePx = baseOther * density,
-            typeface = typefaceFor(settings.lyricFontFamily()),
+            typeface = typefaceFor(family, bold),
             maxVisualLines = settings.maxLyricVisualLines,
             currentScale = settings.currentLineScale,
-            nextScale = settings.nextLineScale
+            nextScale = settings.nextLineScale,
+            bold = bold
         )
     }
 
-    fun typefaceFor(family: LyricFontFamily): Typeface? = when (family) {
-        LyricFontFamily.DEFAULT -> null
-        LyricFontFamily.SANS -> Typeface.SANS_SERIF
-        LyricFontFamily.SERIF -> Typeface.SERIF
-        LyricFontFamily.ROUND -> Typeface.create("sans-serif-medium", Typeface.NORMAL)
+    fun typefaceFor(family: LyricFontFamily, bold: Boolean = false): Typeface? {
+        val base = when (family) {
+            LyricFontFamily.DEFAULT -> Typeface.DEFAULT
+            LyricFontFamily.SANS -> Typeface.SANS_SERIF
+            LyricFontFamily.SERIF -> Typeface.SERIF
+            LyricFontFamily.ROUND -> Typeface.create("sans-serif-medium", Typeface.NORMAL)
+        }
+        return if (bold) Typeface.create(base, Typeface.BOLD) else base
     }
 
     fun wrapText(text: String, paint: Paint, maxWidth: Float, maxLines: Int): List<String> {
@@ -122,6 +129,9 @@ object LyricRenderer {
     ): Float {
         sungPaint.typeface = style.typeface
         pendingPaint.typeface = style.typeface
+        sungPaint.isFakeBoldText = style.bold
+        pendingPaint.isFakeBoldText = style.bold
+        nextPaint.isFakeBoldText = style.bold
         sungPaint.textSize = style.currentSizePx
         pendingPaint.textSize = style.currentSizePx
 
@@ -191,6 +201,12 @@ object LyricRenderer {
         nextPaint: TextPaint,
         pendingPaint: TextPaint
     ) {
+        sungPaint.typeface = style.typeface
+        nextPaint.typeface = style.typeface
+        pendingPaint.typeface = style.typeface
+        sungPaint.isFakeBoldText = style.bold
+        nextPaint.isFakeBoldText = style.bold
+        pendingPaint.isFakeBoldText = style.bold
         val maxW = width.toFloat()
         val gap = style.currentSizePx * 0.6f
         val blockH = height / 2f
