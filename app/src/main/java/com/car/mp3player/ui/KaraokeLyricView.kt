@@ -28,16 +28,18 @@ class KaraokeLyricView @JvmOverloads constructor(
     private var targetPositionMs = 0L
     private var animating = false
 
-    private val frameCallback = Choreographer.FrameCallback {
-        if (!animating) return@FrameCallback
-        val lerp = if (settings.smoothLyrics) 0.22f else 1f
-        displayPositionMs += (targetPositionMs - displayPositionMs) * lerp
-        invalidate()
-        if (settings.smoothLyrics && abs(targetPositionMs - displayPositionMs) > 6f) {
-            Choreographer.getInstance().postFrameCallback(this)
-        } else {
-            displayPositionMs = targetPositionMs.toFloat()
-            animating = false
+    private val frameCallback = object : Choreographer.FrameCallback {
+        override fun doFrame(frameTimeNanos: Long) {
+            if (!animating) return
+            val lerp = if (settings.smoothLyrics) 0.22f else 1f
+            displayPositionMs += (targetPositionMs - displayPositionMs) * lerp
+            invalidate()
+            if (settings.smoothLyrics && abs(targetPositionMs - displayPositionMs) > 6f) {
+                Choreographer.getInstance().postFrameCallback(this)
+            } else {
+                displayPositionMs = targetPositionMs.toFloat()
+                animating = false
+            }
         }
     }
 
