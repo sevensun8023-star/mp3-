@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">MP3播放器</string>
+    <string name="scan_music">扫描音乐</string>
+    <string name="play">播放</string>
+    <string name="pause">暂停</string>
+    <string name="prev">上一首</string>
+    <string name="next">下一首</string>
+    <string name="settings">歌词设置</string>
+    <string name="overlay_on">悬浮歌词：开</string>
+    <string name="overlay_off">悬浮歌词：关</string>
+    <string name="no_songs">未找到音乐文件\n请将 mp3 与同名 .lrc 放入 Music 文件夹</string>
+    <string name="permission_storage">需要存储权限以读取本地音乐</string>
+    <string name="permission_overlay">需要悬浮窗权限才能在地图/桌面显示歌词</string>
+    <string name="grant_overlay">去开启悬浮窗</string>
+    <string name="now_playing">正在播放</string>
+    <string name="channel_playback">音乐播放</string>
+    <string name="font_size">字体大小</string>
+    <string name="highlight_color">已唱颜色</string>
+    <string name="pending_color">未唱颜色</string>
+    <string name="next_line_color">下一行颜色</string>
+    <string name="overlay_position">歌词位置</string>
+    <string name="position_top">顶部</string>
+    <string name="position_center">居中</string>
+    <string name="position_bottom">底部</string>
+    <string name="save">保存</string>
+    <string name="preview">预览悬浮歌词</string>
+    <string name="byd_tips_title">比亚迪车机设置提示</string>
+    <string name="byd_tips_body">1. 允许「显示在其他应用上层」\n2. 极速模式 → 白名单加入本应用\n3. 禁止自启动里不要关闭本应用\n4. 音乐与 lrc 建议放在 /sdcard/Music/</string>
+</resources>
