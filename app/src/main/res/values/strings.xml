@@ -39,7 +39,8 @@
     <string name="settings_overlay">悬浮歌词</string>
     <string name="settings_overlay_grant">开启悬浮窗权限</string>
     <string name="font_size">悬浮歌词字号</string>
-    <string name="lyric_theme">歌词主题</string>
+    <string name="lyric_theme">歌词配色</string>
+    <string name="app_theme">应用主题</string>
     <string name="lyric_font">歌词字体</string>
     <string name="smooth_lyrics">歌词平滑滚动</string>
     <string name="player_font_size">播放页当前行字号</string>
