@@ -14,6 +14,7 @@ import com.car.mp3player.data.SettingsRepository
 import com.car.mp3player.databinding.ActivityMainBinding
 import com.car.mp3player.model.Song
 import com.car.mp3player.playback.PlaybackStateHolder
+import com.car.mp3player.ui.AppThemeManager
 import com.car.mp3player.ui.MainHost
 import com.car.mp3player.ui.MainPagerAdapter
 import com.car.mp3player.ui.PlayerFragment
@@ -35,6 +36,7 @@ class MainActivity : AppCompatActivity(), MainHost {
     override fun onCreate(savedInstanceState: Bundle?) {
         settings = SettingsRepository(this)
         settings.applyTheme()
+        setTheme(settings.appTheme().styleRes)
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
@@ -42,6 +44,7 @@ class MainActivity : AppCompatActivity(), MainHost {
         binding.viewPager.adapter = MainPagerAdapter(this)
         binding.viewPager.isUserInputEnabled = false
         binding.viewPager.offscreenPageLimit = 3
+        applyAppTheme()
 
         binding.bottomNav.setOnItemSelectedListener { item ->
             binding.viewPager.setCurrentItem(
@@ -55,7 +58,20 @@ class MainActivity : AppCompatActivity(), MainHost {
             true
         }
 
+        restoreCachedPlaylist()
         requestPermissionsAndScan()
+    }
+
+    private fun restoreCachedPlaylist() {
+        songs = PlaybackBootstrap.loadCachedSongs(this)
+        if (songs.isEmpty()) return
+        PlaybackStateHolder.setPlaylist(songs)
+        binding.root.post {
+            (supportFragmentManager.findFragmentByTag("f0") as? PlaylistFragment)?.refreshFromHost()
+            if (!PlaybackStateHolder.isPlaying) {
+                PlaybackBootstrap.resumeIfNeeded(this, songs, settings)
+            }
+        }
     }
 
     override fun playSongAt(index: Int) {
@@ -86,17 +102,28 @@ class MainActivity : AppCompatActivity(), MainHost {
 
     override fun scanMusic(onDone: ((Int) -> Unit)?) {
         CoroutineScope(Dispatchers.Main).launch {
-            songs = withContext(Dispatchers.IO) {
+            val scanned = withContext(Dispatchers.IO) {
                 PlaybackBootstrap.scanSongs(this@MainActivity, settings)
             }
-            PlaybackStateHolder.setPlaylist(songs)
-            (supportFragmentManager.findFragmentByTag("f0") as? PlaylistFragment)?.refreshFromHost()
-            PlaybackBootstrap.resumeIfNeeded(this@MainActivity, songs, settings)
+            if (scanned.isNotEmpty()) {
+                songs = scanned
+                PlaybackStateHolder.setPlaylist(songs)
+                (supportFragmentManager.findFragmentByTag("f0") as? PlaylistFragment)?.refreshFromHost()
+                if (!PlaybackStateHolder.isPlaying) {
+                    PlaybackBootstrap.resumeIfNeeded(this@MainActivity, songs, settings)
+                }
+            }
             onDone?.invoke(songs.size)
         }
     }
 
     override fun allSongs(): List<Song> = songs
+
+    private fun applyAppTheme() {
+        val palette = AppThemeManager.palette(this, settings)
+        binding.root.setBackgroundColor(palette.background)
+        AppThemeManager.applyBottomNav(binding.bottomNav, palette)
+    }
 
     private fun requestPermissionsAndScan() {
         val needed = requiredPermissions().filter {

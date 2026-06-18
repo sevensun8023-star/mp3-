@@ -16,6 +16,7 @@ import com.car.mp3player.R
 import com.car.mp3player.data.ScanPathHelper
 import com.car.mp3player.data.SettingsRepository
 import com.car.mp3player.databinding.FragmentSettingsBinding
+import com.car.mp3player.model.AppThemePreset
 import com.car.mp3player.model.LyricFontFamily
 import com.car.mp3player.model.LyricThemePreset
 import com.car.mp3player.model.ThemeMode
@@ -76,6 +77,7 @@ class SettingsFragment : Fragment() {
             else -> binding.posCenter.isChecked = true
         }
 
+        setupAppThemeChips()
         setupLyricThemeChips()
         setupLyricFontChips()
         refreshScanPathsUi()
@@ -168,6 +170,25 @@ class SettingsFragment : Fragment() {
                 else -> SettingsRepository.POSITION_CENTER
             }
             LyricsOverlayService.refresh(requireContext())
+        }
+
+        AppThemeManager.applyFragmentRoot(binding.root, AppThemeManager.palette(requireContext(), settings))
+    }
+
+    private fun setupAppThemeChips() {
+        binding.appThemeGroup.removeAllViews()
+        val current = settings.appTheme()
+        AppThemePreset.entries.forEach { preset ->
+            val chip = Chip(requireContext()).apply {
+                text = preset.displayName
+                isCheckable = true
+                isChecked = preset == current
+                setOnClickListener {
+                    settings.setAppTheme(preset)
+                    activity?.recreate()
+                }
+            }
+            binding.appThemeGroup.addView(chip)
         }
     }
 

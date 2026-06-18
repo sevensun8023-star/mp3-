@@ -11,6 +11,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.car.mp3player.ArtistAdapter
 import com.car.mp3player.R
 import com.car.mp3player.SongAdapter
+import com.car.mp3player.data.SettingsRepository
 import com.car.mp3player.databinding.FragmentPlaylistBinding
 import com.car.mp3player.model.ArtistGroup
 import com.car.mp3player.model.PlaylistSortOrder
@@ -37,6 +38,8 @@ class PlaylistFragment : Fragment(), PlaybackStateHolder.Listener {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        val settings = SettingsRepository(requireContext())
+        AppThemeManager.applyFragmentRoot(binding.root, AppThemeManager.palette(requireContext(), settings))
         songAdapter = SongAdapter { song, indexInList ->
             val now = System.currentTimeMillis()
             if (now - lastClickMs < 280) return@SongAdapter

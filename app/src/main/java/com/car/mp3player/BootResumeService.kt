@@ -28,15 +28,40 @@ class BootResumeService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         scope.launch {
-            val songs = withContext(Dispatchers.IO) {
-                PlaybackBootstrap.scanSongs(this@BootResumeService, settings)
+            val cached = withContext(Dispatchers.IO) {
+                PlaybackBootstrap.loadCachedSongs(this@BootResumeService)
             }
-            PlaybackStateHolder.setPlaylist(songs)
-            PlaybackBootstrap.resumeIfNeeded(this@BootResumeService, songs, settings)
+            if (cached.isNotEmpty()) {
+                PlaybackStateHolder.setPlaylist(cached)
+                PlaybackBootstrap.resumeIfNeeded(this@BootResumeService, cached, settings)
+            }
+
+            launchMainActivityIfNeeded()
+
+            withContext(Dispatchers.IO) {
+                val scanned = PlaybackBootstrap.scanSongs(this@BootResumeService, settings)
+                if (scanned.isNotEmpty()) {
+                    PlaybackStateHolder.setPlaylist(scanned)
+                    if (!PlaybackStateHolder.isPlaying) {
+                        PlaybackBootstrap.resumeIfNeeded(this@BootResumeService, scanned, settings)
+                    }
+                }
+            }
+
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
         }
         return START_NOT_STICKY
+    }
+
+    private fun launchMainActivityIfNeeded() {
+        if (!settings.bootAutoStart) return
+        val launchIntent = Intent(this, MainActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        }
+        startActivity(launchIntent)
     }
 
     override fun onBind(intent: Intent?): IBinder? = null

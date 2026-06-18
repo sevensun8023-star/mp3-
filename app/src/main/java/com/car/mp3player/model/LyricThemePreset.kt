@@ -10,19 +10,14 @@ enum class LyricThemePreset(
     val playerNextSizeSp: Float,
     val overlaySizeSp: Float
 ) {
+    CLASSIC(
+        "classic", "经典白",
+        0xE6FFFFFF.toInt(), 0x99FFFFFF.toInt(), 0xBBFFFFFF.toInt(),
+        22f, 18f, 26f
+    ),
     NETEASE(
-        "netease", "网易云",
+        "netease", "网易云红",
         0xE6EC4141.toInt(), 0x99FFFFFF.toInt(), 0xBBFFFFFF.toInt(),
-        22f, 18f, 26f
-    ),
-    ZELDA(
-        "zelda", "塞尔达",
-        0xE6C9A227.toInt(), 0x99F0EAD6.toInt(), 0xBBDDD4B8.toInt(),
-        22f, 18f, 26f
-    ),
-    MARIO(
-        "mario", "马里奥",
-        0xE6E85D5D.toInt(), 0x99FFF5E6.toInt(), 0xBBFFE8CC.toInt(),
         22f, 18f, 26f
     ),
     PINK(
@@ -53,7 +48,8 @@ enum class LyricThemePreset(
 
     companion object {
         fun fromId(id: String): LyricThemePreset =
-            entries.firstOrNull { it.id == id } ?: NETEASE
+            entries.firstOrNull { it.id == id }
+                ?: if (id in setOf("zelda", "mario")) NETEASE else NETEASE
     }
 }
 
