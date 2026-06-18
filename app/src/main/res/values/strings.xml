@@ -46,6 +46,8 @@
     <string name="player_font_size">播放页当前行字号</string>
     <string name="player_next_font_size">播放页下一行字号</string>
     <string name="overlay_font_size">悬浮歌词字号</string>
+    <string name="overlay_lyric_bold">悬浮歌词加粗</string>
+    <string name="tap_toggle_lyrics">点击切换歌词</string>
     <string name="current_line_scale">当前行放大比例</string>
     <string name="next_line_scale">下一行缩小比例</string>
     <string name="max_lyric_lines">歌词最多显示行数</string>
@@ -57,7 +59,10 @@
     <string name="settings_playback">播放设置</string>
     <string name="auto_resume">启动时自动恢复播放</string>
     <string name="boot_auto_start">开机自动启动并续播</string>
+    <string name="boot_open_app">开机时打开应用界面</string>
+    <string name="boot_return_home">续播后自动返回桌面</string>
     <string name="cluster_lyrics">仪表屏滚动歌词</string>
+    <string name="cluster_lyrics_hint">若仪表仅显示音乐图标，请确认车机已授予媒体信息权限；部分比亚迪车型通过系统媒体栏显示歌名/歌词</string>
     <string name="channel_boot">开机启动</string>
     <string name="boot_starting">正在恢复音乐播放…</string>
     <string name="lyric_search_title">重新搜索歌词</string>
