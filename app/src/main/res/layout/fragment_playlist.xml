@@ -49,7 +49,7 @@
         android:orientation="horizontal">
 
         <com.google.android.material.chip.Chip
-            android:id="@+id/chipAll"
+            android:id="@+id/chipAllSongs"
             style="@style/Widget.MaterialComponents.Chip.Choice"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -60,20 +60,55 @@
             app:chipStrokeWidth="1dp" />
 
         <com.google.android.material.chip.Chip
-            android:id="@+id/chipWithLrc"
+            android:id="@+id/chipArtists"
             style="@style/Widget.MaterialComponents.Chip.Choice"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="8dp"
-            android:text="@string/filter_with_lrc"
+            android:text="@string/filter_artists"
             app:chipBackgroundColor="@color/chip_bg"
             app:chipStrokeColor="@color/netease_red"
             app:chipStrokeWidth="1dp" />
+    </LinearLayout>
 
-        <View
-            android:layout_width="0dp"
-            android:layout_height="0dp"
-            android:layout_weight="1" />
+    <RadioGroup
+        android:id="@+id/sortGroup"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="16dp"
+        android:layout_marginTop="8dp"
+        android:orientation="horizontal">
+
+        <RadioButton
+            android:id="@+id/sortTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:checked="true"
+            android:text="@string/sort_title"
+            android:textColor="@color/text_primary" />
+
+        <RadioButton
+            android:id="@+id/sortDurationAsc"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/sort_duration_asc"
+            android:textColor="@color/text_primary" />
+
+        <RadioButton
+            android:id="@+id/sortDurationDesc"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/sort_duration_desc"
+            android:textColor="@color/text_primary" />
+    </RadioGroup>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="16dp"
+        android:layout_marginTop="4dp"
+        android:gravity="end"
+        android:orientation="horizontal">
 
         <TextView
             android:id="@+id/songCountText"

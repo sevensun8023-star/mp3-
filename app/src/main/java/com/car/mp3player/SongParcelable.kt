@@ -9,17 +9,19 @@ data class SongParcelable(
     val title: String,
     val artist: String,
     val path: String,
-    val lrcPath: String?
+    val lrcPath: String?,
+    val durationMs: Long = 0L
 ) : Parcelable {
     constructor(parcel: Parcel) : this(
         parcel.readLong(),
         parcel.readString() ?: "",
         parcel.readString() ?: "",
         parcel.readString() ?: "",
-        parcel.readString()
+        parcel.readString(),
+        parcel.readLong()
     )
 
-    fun toSong() = Song(id, title, artist, path, lrcPath)
+    fun toSong() = Song(id, title, artist, path, lrcPath, durationMs)
 
     override fun writeToParcel(parcel: Parcel, flags: Int) {
         parcel.writeLong(id)
@@ -27,6 +29,7 @@ data class SongParcelable(
         parcel.writeString(artist)
         parcel.writeString(path)
         parcel.writeString(lrcPath)
+        parcel.writeLong(durationMs)
     }
 
     override fun describeContents(): Int = 0
@@ -35,6 +38,8 @@ data class SongParcelable(
         override fun createFromParcel(parcel: Parcel): SongParcelable = SongParcelable(parcel)
         override fun newArray(size: Int): Array<SongParcelable?> = arrayOfNulls(size)
 
-        fun from(song: Song) = SongParcelable(song.id, song.title, song.artist, song.path, song.lrcPath)
+        fun from(song: Song) = SongParcelable(
+            song.id, song.title, song.artist, song.path, song.lrcPath, song.durationMs
+        )
     }
 }

@@ -64,6 +64,37 @@ class SettingsRepository(context: Context) {
         get() = prefs.getBoolean(KEY_AUTO_RESUME, true)
         set(value) = prefs.edit { putBoolean(KEY_AUTO_RESUME, value) }
 
+    var bootAutoStart: Boolean
+        get() = prefs.getBoolean(KEY_BOOT_AUTO_START, false)
+        set(value) = prefs.edit { putBoolean(KEY_BOOT_AUTO_START, value) }
+
+    var clusterLyricsEnabled: Boolean
+        get() = prefs.getBoolean(KEY_CLUSTER_LYRICS, false)
+        set(value) = prefs.edit { putBoolean(KEY_CLUSTER_LYRICS, value) }
+
+    fun lyricSearchTitle(path: String): String? =
+        prefs.getString(lyricTitleKey(path), null)
+
+    fun lyricSearchArtist(path: String): String? =
+        prefs.getString(lyricArtistKey(path), null)
+
+    fun setLyricSearchOverride(path: String, title: String, artist: String) {
+        prefs.edit {
+            putString(lyricTitleKey(path), title.trim())
+            putString(lyricArtistKey(path), artist.trim())
+        }
+    }
+
+    fun clearLyricSearchOverride(path: String) {
+        prefs.edit {
+            remove(lyricTitleKey(path))
+            remove(lyricArtistKey(path))
+        }
+    }
+
+    private fun lyricTitleKey(path: String) = "lyric_title_${path.hashCode()}"
+    private fun lyricArtistKey(path: String) = "lyric_artist_${path.hashCode()}"
+
     var themeMode: ThemeMode
         get() = ThemeMode.entries[prefs.getInt(KEY_THEME, ThemeMode.SYSTEM.ordinal)]
         set(value) = prefs.edit { putInt(KEY_THEME, value.ordinal) }
@@ -170,6 +201,8 @@ class SettingsRepository(context: Context) {
         const val KEY_POSITION = "overlay_position"
         const val KEY_OVERLAY = "overlay_enabled"
         const val KEY_AUTO_RESUME = "auto_resume"
+        const val KEY_BOOT_AUTO_START = "boot_auto_start"
+        const val KEY_CLUSTER_LYRICS = "cluster_lyrics"
         const val KEY_THEME = "theme_mode"
         const val KEY_LYRIC_THEME = "lyric_theme"
         const val KEY_LYRIC_FONT = "lyric_font"

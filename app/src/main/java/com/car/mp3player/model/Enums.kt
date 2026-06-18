@@ -11,7 +11,13 @@ enum class ThemeMode {
     SYSTEM
 }
 
-enum class LyricFilter {
-    ALL,
-    WITH_LRC
+enum class PlaylistViewMode {
+    ALL_SONGS,
+    BY_ARTIST
+}
+
+enum class PlaylistSortOrder {
+    TITLE,
+    DURATION_ASC,
+    DURATION_DESC
 }

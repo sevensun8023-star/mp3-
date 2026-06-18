@@ -9,10 +9,14 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import com.car.mp3player.MusicPlaybackService
 import com.car.mp3player.R
+import com.car.mp3player.data.SettingsRepository
+import com.car.mp3player.databinding.DialogLyricSearchBinding
 import com.car.mp3player.databinding.FragmentPlayerBinding
 import com.car.mp3player.model.PlaybackMode
 import com.car.mp3player.model.Song
@@ -24,6 +28,7 @@ class PlayerFragment : Fragment(), PlaybackStateHolder.Listener {
     private var _binding: FragmentPlayerBinding? = null
     private val binding get() = _binding!!
     private var userSeeking = false
+    private lateinit var settings: SettingsRepository
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentPlayerBinding.inflate(inflater, container, false)
@@ -32,6 +37,7 @@ class PlayerFragment : Fragment(), PlaybackStateHolder.Listener {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        settings = SettingsRepository(requireContext())
         binding.btnPlayPause.setOnClickListener { sendAction(MusicPlaybackService.ACTION_TOGGLE) }
         binding.btnNext.setOnClickListener { sendAction(MusicPlaybackService.ACTION_NEXT) }
         binding.btnPrev.setOnClickListener { sendAction(MusicPlaybackService.ACTION_PREV) }
@@ -47,6 +53,11 @@ class PlayerFragment : Fragment(), PlaybackStateHolder.Listener {
                 seekTo(slider.value.toLong())
             }
         })
+
+        binding.scrollLyricView.setOnLongClickListener {
+            showLyricSearchDialog()
+            true
+        }
 
         renderState()
         renderCover(PlaybackStateHolder.coverArtPath)
@@ -180,6 +191,33 @@ class PlayerFragment : Fragment(), PlaybackStateHolder.Listener {
     fun refreshLyricStyle() {
         binding.scrollLyricView.refreshStyle()
         binding.scrollLyricView.update(PlaybackStateHolder.lrcLines, PlaybackStateHolder.positionMs)
+    }
+
+    private fun showLyricSearchDialog() {
+        val song = PlaybackStateHolder.currentSong ?: return
+        val dialogBinding = DialogLyricSearchBinding.inflate(layoutInflater)
+        dialogBinding.inputTitle.setText(settings.lyricSearchTitle(song.path) ?: song.title)
+        dialogBinding.inputArtist.setText(settings.lyricSearchArtist(song.path) ?: song.artist)
+
+        AlertDialog.Builder(requireContext())
+            .setView(dialogBinding.root)
+            .setPositiveButton(R.string.lyric_search_action) { _, _ ->
+                val title = dialogBinding.inputTitle.text?.toString()?.trim().orEmpty()
+                val artist = dialogBinding.inputArtist.text?.toString()?.trim().orEmpty()
+                if (title.isEmpty()) {
+                    Toast.makeText(requireContext(), R.string.lyric_search_empty, Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                val intent = Intent(requireContext(), MusicPlaybackService::class.java).apply {
+                    action = MusicPlaybackService.ACTION_RELOAD_LYRICS
+                    putExtra(MusicPlaybackService.EXTRA_SEARCH_TITLE, title)
+                    putExtra(MusicPlaybackService.EXTRA_SEARCH_ARTIST, artist)
+                }
+                ContextCompat.startForegroundService(requireContext(), intent)
+                Toast.makeText(requireContext(), R.string.lyric_searching, Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
     }
 
     override fun onDestroyView() {

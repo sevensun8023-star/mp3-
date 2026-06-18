@@ -9,7 +9,7 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import com.car.mp3player.data.MusicScanner
+import com.car.mp3player.data.PlaybackBootstrap
 import com.car.mp3player.data.SettingsRepository
 import com.car.mp3player.databinding.ActivityMainBinding
 import com.car.mp3player.model.Song
@@ -59,28 +59,24 @@ class MainActivity : AppCompatActivity(), MainHost {
     }
 
     override fun playSongAt(index: Int) {
-        if (songs.isEmpty() || index !in songs.indices) return
+        playSongSubset(songs, index)
+    }
+
+    override fun playSongSubset(subset: List<Song>, index: Int) {
+        if (subset.isEmpty() || index !in subset.indices) return
         val intent = Intent(this, MusicPlaybackService::class.java).apply {
             action = MusicPlaybackService.ACTION_PLAY_INDEX
             putExtra(MusicPlaybackService.EXTRA_INDEX, index)
-            if (!samePlaylist(PlaybackStateHolder.songs, songs)) {
-                putParcelableArrayListExtra(
-                    MusicPlaybackService.EXTRA_PLAYLIST,
-                    ArrayList(songs.map { SongParcelable.from(it) })
-                )
-            }
+            putParcelableArrayListExtra(
+                MusicPlaybackService.EXTRA_PLAYLIST,
+                ArrayList(subset.map { SongParcelable.from(it) })
+            )
         }
         ContextCompat.startForegroundService(this, intent)
     }
 
     override fun notifyLyricStyleChanged() {
         (supportFragmentManager.findFragmentByTag("f1") as? PlayerFragment)?.refreshLyricStyle()
-    }
-
-    private fun samePlaylist(a: List<Song>, b: List<Song>): Boolean {
-        if (a.size != b.size) return false
-        if (a.isEmpty()) return true
-        return a.first().path == b.first().path && a.last().path == b.last().path
     }
 
     override fun switchToTab(index: Int) {
@@ -91,26 +87,11 @@ class MainActivity : AppCompatActivity(), MainHost {
     override fun scanMusic(onDone: ((Int) -> Unit)?) {
         CoroutineScope(Dispatchers.Main).launch {
             songs = withContext(Dispatchers.IO) {
-                MusicScanner(this@MainActivity, settings.scanPaths(), settings.scanTreeUris()).scan()
+                PlaybackBootstrap.scanSongs(this@MainActivity, settings)
             }
             PlaybackStateHolder.setPlaylist(songs)
             (supportFragmentManager.findFragmentByTag("f0") as? PlaylistFragment)?.refreshFromHost()
-            if (settings.autoResumePlayback) {
-                val path = settings.lastSongPath
-                val index = if (path != null) songs.indexOfFirst { it.path == path } else -1
-                if (index >= 0) {
-                    val intent = Intent(this@MainActivity, MusicPlaybackService::class.java).apply {
-                        action = MusicPlaybackService.ACTION_PLAY_INDEX
-                        putExtra(MusicPlaybackService.EXTRA_INDEX, index)
-                        putExtra(MusicPlaybackService.EXTRA_SEEK, settings.lastPositionMs)
-                        putParcelableArrayListExtra(
-                            MusicPlaybackService.EXTRA_PLAYLIST,
-                            ArrayList(songs.map { SongParcelable.from(it) })
-                        )
-                    }
-                    ContextCompat.startForegroundService(this@MainActivity, intent)
-                }
-            }
+            PlaybackBootstrap.resumeIfNeeded(this@MainActivity, songs, settings)
             onDone?.invoke(songs.size)
         }
     }

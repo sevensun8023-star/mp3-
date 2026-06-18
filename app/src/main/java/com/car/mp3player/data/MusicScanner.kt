@@ -1,6 +1,7 @@
 package com.car.mp3player.data
 
 import android.content.Context
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Environment
 import android.provider.MediaStore
@@ -18,7 +19,9 @@ class MusicScanner(
     fun scan(): List<Song> {
         val merged = linkedMapOf<String, Song>()
         scanMediaStore().forEach { merged[it.path] = it }
-        scanDirectories(resolvePaths()).forEach { merged[it.path] = it }
+        scanDirectories(resolvePaths()).forEach { song ->
+            if (!merged.containsKey(song.path)) merged[song.path] = song
+        }
         scanDocumentTrees().forEach { merged[it.path] = it }
         return merged.values.sortedBy { it.title.lowercase() }
     }
@@ -40,7 +43,8 @@ class MusicScanner(
             MediaStore.Audio.Media._ID,
             MediaStore.Audio.Media.TITLE,
             MediaStore.Audio.Media.ARTIST,
-            MediaStore.Audio.Media.DATA
+            MediaStore.Audio.Media.DATA,
+            MediaStore.Audio.Media.DURATION
         )
         context.contentResolver.query(
             MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
@@ -53,6 +57,7 @@ class MusicScanner(
             val titleCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE)
             val artistCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST)
             val dataCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATA)
+            val durationCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
             while (cursor.moveToNext()) {
                 val path = cursor.getString(dataCol) ?: continue
                 if (!isAudioFile(path)) continue
@@ -62,7 +67,8 @@ class MusicScanner(
                         title = cursor.getString(titleCol) ?: File(path).nameWithoutExtension,
                         artist = cursor.getString(artistCol) ?: "未知歌手",
                         path = path,
-                        lrcPath = findLrc(path)
+                        lrcPath = findLrc(path),
+                        durationMs = cursor.getLong(durationCol).coerceAtLeast(0L)
                     )
                 )
             }
@@ -84,7 +90,8 @@ class MusicScanner(
                             title = file.nameWithoutExtension,
                             artist = file.parentFile?.name ?: "本地音乐",
                             path = file.absolutePath,
-                            lrcPath = findLrc(file.absolutePath)
+                            lrcPath = findLrc(file.absolutePath),
+                            durationMs = readDurationMs(file.absolutePath)
                         )
                     )
                 }
@@ -113,15 +120,32 @@ class MusicScanner(
         }
         val name = file.name ?: return
         if (!isAudioFile(name)) return
+        val uri = file.uri.toString()
         out.add(
             Song(
                 id = nextId(),
                 title = name.substringBeforeLast('.'),
                 artist = "本地音乐",
-                path = file.uri.toString(),
-                lrcPath = null
+                path = uri,
+                lrcPath = null,
+                durationMs = readDurationMs(uri)
             )
         )
+    }
+
+    private fun readDurationMs(pathOrUri: String): Long {
+        val retriever = MediaMetadataRetriever()
+        return runCatching {
+            if (pathOrUri.startsWith("content://")) {
+                retriever.setDataSource(context, Uri.parse(pathOrUri))
+            } else {
+                retriever.setDataSource(pathOrUri)
+            }
+            retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()
+                ?.coerceAtLeast(0L) ?: 0L
+        }.getOrDefault(0L).also {
+            runCatching { retriever.release() }
+        }
     }
 
     private fun findLrc(audioPath: String): String? {

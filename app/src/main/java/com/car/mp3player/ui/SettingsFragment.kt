@@ -10,6 +10,7 @@ import android.view.ViewGroup
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.Fragment
+import com.car.mp3player.ClusterLyricService
 import com.car.mp3player.LyricsOverlayService
 import com.car.mp3player.R
 import com.car.mp3player.data.ScanPathHelper
@@ -51,6 +52,8 @@ class SettingsFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
         settings = SettingsRepository(requireContext())
         binding.switchAutoResume.isChecked = settings.autoResumePlayback
+        binding.switchBootAutoStart.isChecked = settings.bootAutoStart
+        binding.switchClusterLyrics.isChecked = settings.clusterLyricsEnabled
         binding.switchOverlay.isChecked = settings.overlayEnabled
         binding.switchOnlineLyrics.isChecked = settings.onlineLyricsEnabled
         binding.switchOnlineCover.isChecked = settings.onlineCoverEnabled
@@ -93,6 +96,13 @@ class SettingsFragment : Fragment() {
 
         binding.switchAutoResume.setOnCheckedChangeListener { _, checked ->
             settings.autoResumePlayback = checked
+        }
+        binding.switchBootAutoStart.setOnCheckedChangeListener { _, checked ->
+            settings.bootAutoStart = checked
+        }
+        binding.switchClusterLyrics.setOnCheckedChangeListener { _, checked ->
+            settings.clusterLyricsEnabled = checked
+            if (checked) ClusterLyricService.start(requireContext()) else ClusterLyricService.stop(requireContext())
         }
         binding.switchOnlineLyrics.setOnCheckedChangeListener { _, checked ->
             settings.onlineLyricsEnabled = checked
@@ -200,6 +210,7 @@ class SettingsFragment : Fragment() {
 
     private fun notifyLyricStyleChanged() {
         LyricsOverlayService.refresh(requireContext())
+        ClusterLyricService.refresh(requireContext())
         (activity as? MainHost)?.notifyLyricStyleChanged()
     }
 

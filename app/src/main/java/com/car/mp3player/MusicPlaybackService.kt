@@ -106,6 +106,7 @@ class MusicPlaybackService : Service() {
                 val seek = intent.getLongExtra(EXTRA_SEEK, 0L)
                 exoPlayer?.seekTo(seek.coerceAtLeast(0L))
             }
+            ACTION_RELOAD_LYRICS -> reloadLyrics(intent)
             ACTION_STOP -> stopSelf()
         }
         return START_STICKY
@@ -162,6 +163,7 @@ class MusicPlaybackService : Service() {
         PlaybackStateHolder.update(song, true, seekMs, currentLines, exoPlayer?.duration?.coerceAtLeast(0L) ?: 0L)
         LyricsOverlayService.start(applicationContext)
         LyricsOverlayService.updateLyrics(applicationContext, PlaybackStateHolder.lyricState)
+        ClusterLyricService.start(applicationContext)
         loadMetadataAsync(song)
     }
 
@@ -248,6 +250,31 @@ class MusicPlaybackService : Service() {
         shuffleQueue = playlist.indices.filter { it != currentIndex }.shuffled().toMutableList()
     }
 
+    private fun reloadLyrics(intent: Intent) {
+        val song = playlist.getOrNull(currentIndex) ?: return
+        val title = intent.getStringExtra(EXTRA_SEARCH_TITLE)?.trim().orEmpty()
+        val artist = intent.getStringExtra(EXTRA_SEARCH_ARTIST)?.trim().orEmpty()
+        if (title.isNotEmpty()) {
+            settings.setLyricSearchOverride(song.path, title, artist.ifBlank { song.artist })
+        }
+        metadataScope.launch {
+            val lines = metadataLoader.loadLyrics(song, forceOnline = true) ?: return@launch
+            if (playlist.getOrNull(currentIndex)?.path != song.path) return@launch
+            currentLines = lines
+            withContext(Dispatchers.Main) {
+                val p = exoPlayer
+                PlaybackStateHolder.update(
+                    song,
+                    p?.isPlaying == true,
+                    p?.currentPosition ?: 0L,
+                    currentLines,
+                    p?.duration?.coerceAtLeast(0L) ?: PlaybackStateHolder.durationMs
+                )
+                LyricsOverlayService.updateLyrics(applicationContext, PlaybackStateHolder.lyricState)
+            }
+        }
+    }
+
     private fun persistProgress(song: Song?, positionMs: Long) {
         if (song == null) return
         settings.lastSongPath = song.path
@@ -314,11 +341,14 @@ class MusicPlaybackService : Service() {
         const val ACTION_SET_MODE = "set_mode"
         const val ACTION_RESUME = "resume"
         const val ACTION_SEEK = "seek"
+        const val ACTION_RELOAD_LYRICS = "reload_lyrics"
         const val ACTION_STOP = "stop"
         const val EXTRA_INDEX = "index"
         const val EXTRA_SEEK = "seek"
         const val EXTRA_PLAYLIST = "playlist"
         const val EXTRA_MODE = "mode"
+        const val EXTRA_SEARCH_TITLE = "search_title"
+        const val EXTRA_SEARCH_ARTIST = "search_artist"
         private const val CHANNEL_ID = "playback"
         private const val NOTIFICATION_ID = 1001
     }

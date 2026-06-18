@@ -5,7 +5,13 @@ data class Song(
     val title: String,
     val artist: String,
     val path: String,
-    val lrcPath: String?
+    val lrcPath: String?,
+    val durationMs: Long = 0L
+)
+
+data class ArtistGroup(
+    val name: String,
+    val songCount: Int
 )
 
 data class LrcChar(

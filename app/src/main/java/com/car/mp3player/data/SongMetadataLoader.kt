@@ -12,21 +12,29 @@ class SongMetadataLoader(
     private val lyricFetcher: OnlineLyricFetcher = OnlineLyricFetcher(),
     private val coverFetcher: CoverArtFetcher
 ) {
-    fun loadLyrics(song: Song): List<LrcLine>? {
-        song.lrcPath?.let { path ->
-            runCatching { LrcParser.parseFile(File(path)) }.getOrNull()?.takeIf { it.isNotEmpty() }?.let {
-                return it
+    fun loadLyrics(song: Song, forceOnline: Boolean = false): List<LrcLine>? {
+        val title = settings.lyricSearchTitle(song.path) ?: song.title
+        val artist = settings.lyricSearchArtist(song.path) ?: song.artist
+
+        if (!forceOnline) {
+            song.lrcPath?.let { path ->
+                runCatching { LrcParser.parseFile(File(path)) }.getOrNull()?.takeIf { it.isNotEmpty() }?.let {
+                    return it
+                }
             }
-        }
-        val cache = lyricsCacheFile(song)
-        if (cache.exists()) {
-            runCatching { LrcParser.parseFile(cache) }.getOrNull()?.takeIf { it.isNotEmpty() }?.let {
-                return it
+            val cache = lyricsCacheFile(song)
+            if (cache.exists()) {
+                runCatching { LrcParser.parseFile(cache) }.getOrNull()?.takeIf { it.isNotEmpty() }?.let {
+                    return it
+                }
             }
+        } else {
+            lyricsCacheFile(song).delete()
         }
+
         if (!settings.onlineLyricsEnabled) return null
-        val fetched = lyricFetcher.fetch(song.title, song.artist) ?: return null
-        runCatching { cache.writeText(buildCacheLrc(fetched)) }
+        val fetched = lyricFetcher.fetch(title, artist) ?: return null
+        runCatching { lyricsCacheFile(song).writeText(buildCacheLrc(fetched)) }
         return fetched
     }
 

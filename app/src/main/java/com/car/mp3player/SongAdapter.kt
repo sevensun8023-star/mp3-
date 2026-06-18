@@ -8,6 +8,7 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.car.mp3player.databinding.ItemSongBinding
 import com.car.mp3player.model.Song
+import com.car.mp3player.util.TimeFormat
 
 class SongAdapter(
     private val onClick: (Song, Int) -> Unit
@@ -52,6 +53,7 @@ class SongAdapter(
         fun bind(song: Song, position: Int) {
             binding.songTitle.text = song.title
             binding.songArtist.text = song.artist
+            binding.songDuration.text = TimeFormat.mmss(song.durationMs)
             binding.lrcBadge.visibility = if (song.lrcPath != null) android.view.View.VISIBLE else android.view.View.GONE
             bindPlayingState(song)
             binding.root.setOnClickListener { onClick(song, position) }

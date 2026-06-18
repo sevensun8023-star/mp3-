@@ -1,0 +1,107 @@
+package com.car.mp3player
+
+import android.app.Service
+import android.content.Context
+import android.content.Intent
+import android.hardware.display.DisplayManager
+import android.os.IBinder
+import android.view.Display
+import com.car.mp3player.data.SettingsRepository
+import com.car.mp3player.model.LrcLine
+import com.car.mp3player.model.Song
+import com.car.mp3player.playback.PlaybackStateHolder
+
+class ClusterLyricService : Service(), PlaybackStateHolder.Listener {
+    private lateinit var settings: SettingsRepository
+    private var presentation: ClusterLyricPresentation? = null
+    private var attachedDisplayId: Int = Display.INVALID_DISPLAY
+
+    override fun onCreate() {
+        super.onCreate()
+        instance = this
+        settings = SettingsRepository(this)
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (!settings.clusterLyricsEnabled) {
+            hidePresentation()
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        showPresentationIfPossible()
+        PlaybackStateHolder.addListener(this)
+        onPlaybackChanged(
+            PlaybackStateHolder.currentSong,
+            PlaybackStateHolder.isPlaying,
+            PlaybackStateHolder.positionMs,
+            PlaybackStateHolder.lrcLines
+        )
+        return START_STICKY
+    }
+
+    override fun onDestroy() {
+        PlaybackStateHolder.removeListener(this)
+        hidePresentation()
+        instance = null
+        super.onDestroy()
+    }
+
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onPlaybackChanged(
+        song: Song?,
+        playing: Boolean,
+        positionMs: Long,
+        lines: List<LrcLine>
+    ) {
+        presentation?.update(lines, positionMs)
+    }
+
+    private fun showPresentationIfPossible() {
+        val display = findClusterDisplay() ?: return
+        if (presentation != null && attachedDisplayId == display.displayId) return
+        hidePresentation()
+        presentation = ClusterLyricPresentation(this, display).also {
+            it.show()
+            attachedDisplayId = display.displayId
+        }
+    }
+
+    private fun findClusterDisplay(): Display? {
+        val manager = getSystemService(DisplayManager::class.java) ?: return null
+        val displays = manager.displays
+        return displays
+            .filter { it.displayId != Display.DEFAULT_DISPLAY }
+            .minByOrNull { it.mode?.physicalWidth ?: Int.MAX_VALUE }
+            ?: displays.firstOrNull { it.displayId != Display.DEFAULT_DISPLAY }
+    }
+
+    private fun hidePresentation() {
+        presentation?.dismiss()
+        presentation = null
+        attachedDisplayId = Display.INVALID_DISPLAY
+    }
+
+    companion object {
+        private var instance: ClusterLyricService? = null
+
+        fun start(context: Context) {
+            if (!SettingsRepository(context).clusterLyricsEnabled) return
+            context.startService(Intent(context, ClusterLyricService::class.java))
+        }
+
+        fun stop(context: Context) {
+            context.stopService(Intent(context, ClusterLyricService::class.java))
+        }
+
+        fun refresh(context: Context) {
+            instance?.let {
+                it.hidePresentation()
+                if (SettingsRepository(context).clusterLyricsEnabled) {
+                    it.showPresentationIfPossible()
+                    it.presentation?.refreshStyle()
+                }
+            } ?: start(context)
+        }
+    }
+}
