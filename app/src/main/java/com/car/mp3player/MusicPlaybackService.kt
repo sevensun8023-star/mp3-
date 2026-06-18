@@ -13,13 +13,17 @@ import android.os.IBinder
 import android.os.Looper
 import androidx.core.app.NotificationCompat
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.session.MediaSession
+import androidx.media3.session.MediaStyleNotificationHelper
 import com.car.mp3player.data.SettingsRepository
 import com.car.mp3player.data.SongMetadataLoader
 import com.car.mp3player.lrc.LrcParser
 import com.car.mp3player.model.PlaybackMode
 import com.car.mp3player.model.Song
+import com.car.mp3player.playback.CarPlaylistPlayer
 import com.car.mp3player.playback.PlaybackStateHolder
 import java.io.File
 import kotlin.random.Random
@@ -30,7 +34,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class MusicPlaybackService : Service() {
-    private var player: ExoPlayer? = null
+    private var exoPlayer: ExoPlayer? = null
+    private var sessionPlayer: CarPlaylistPlayer? = null
+    private var mediaSession: MediaSession? = null
     private val handler = Handler(Looper.getMainLooper())
     private val settings by lazy { SettingsRepository(this) }
     private var playlist: List<Song> = emptyList()
@@ -45,7 +51,7 @@ class MusicPlaybackService : Service() {
 
     private val progressRunnable = object : Runnable {
         override fun run() {
-            val p = player ?: return
+            val p = exoPlayer ?: return
             val song = playlist.getOrNull(currentIndex)
             PlaybackStateHolder.update(song, p.isPlaying, p.currentPosition, currentLines, p.duration.coerceAtLeast(0L))
             LyricsOverlayService.updateLyrics(applicationContext, PlaybackStateHolder.lyricState)
@@ -59,13 +65,21 @@ class MusicPlaybackService : Service() {
     override fun onCreate() {
         super.onCreate()
         createChannel()
-        player = ExoPlayer.Builder(this).build().apply {
+        val player = ExoPlayer.Builder(this).build().apply {
             addListener(object : Player.Listener {
                 override fun onPlaybackStateChanged(playbackState: Int) {
                     if (playbackState == Player.STATE_ENDED) playNext()
                 }
             })
         }
+        exoPlayer = player
+        sessionPlayer = CarPlaylistPlayer(
+            player = player,
+            onSkipNext = { playNext() },
+            onSkipPrevious = { playPrevious() },
+            hasPlaylist = { playlist.isNotEmpty() }
+        )
+        mediaSession = MediaSession.Builder(this, sessionPlayer!!).build()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -90,7 +104,7 @@ class MusicPlaybackService : Service() {
             ACTION_RESUME -> resumeLast()
             ACTION_SEEK -> {
                 val seek = intent.getLongExtra(EXTRA_SEEK, 0L)
-                player?.seekTo(seek.coerceAtLeast(0L))
+                exoPlayer?.seekTo(seek.coerceAtLeast(0L))
             }
             ACTION_STOP -> stopSelf()
         }
@@ -126,15 +140,26 @@ class MusicPlaybackService : Service() {
         PlaybackStateHolder.setCoverArt(null)
         currentLines = loadLocalLyrics(song)
 
-        player?.setMediaItem(MediaItem.fromUri(songUri(song)))
-        player?.prepare()
-        if (seekMs > 0L) player?.seekTo(seekMs)
-        player?.play()
-        startForeground(NOTIFICATION_ID, buildNotification(song.title))
+        val mediaItem = MediaItem.Builder()
+            .setUri(songUri(song))
+            .setMediaId(song.path)
+            .setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setTitle(song.title)
+                    .setArtist(song.artist)
+                    .build()
+            )
+            .build()
+
+        exoPlayer?.setMediaItem(mediaItem)
+        exoPlayer?.prepare()
+        if (seekMs > 0L) exoPlayer?.seekTo(seekMs)
+        exoPlayer?.play()
+        startForeground(NOTIFICATION_ID, buildNotification(song))
         handler.removeCallbacks(progressRunnable)
         handler.post(progressRunnable)
         persistProgress(song, seekMs)
-        PlaybackStateHolder.update(song, true, seekMs, currentLines, player?.duration?.coerceAtLeast(0L) ?: 0L)
+        PlaybackStateHolder.update(song, true, seekMs, currentLines, exoPlayer?.duration?.coerceAtLeast(0L) ?: 0L)
         LyricsOverlayService.start(applicationContext)
         LyricsOverlayService.updateLyrics(applicationContext, PlaybackStateHolder.lyricState)
         loadMetadataAsync(song)
@@ -163,7 +188,7 @@ class MusicPlaybackService : Service() {
                 if (playlist.getOrNull(currentIndex)?.path != song.path) return@launch
                 currentLines = lines
                 withContext(Dispatchers.Main) {
-                    val p = player
+                    val p = exoPlayer
                     PlaybackStateHolder.update(
                         song,
                         p?.isPlaying == true,
@@ -182,10 +207,10 @@ class MusicPlaybackService : Service() {
     }
 
     private fun togglePlayPause() {
-        val p = player ?: return
+        val p = exoPlayer ?: return
         if (p.isPlaying) p.pause() else p.play()
         val song = playlist.getOrNull(currentIndex)
-        updateNotification(song?.title ?: getString(R.string.app_name))
+        updateNotification(song)
         PlaybackStateHolder.update(song, p.isPlaying, p.currentPosition, currentLines, p.duration.coerceAtLeast(0L))
         persistProgress(song, p.currentPosition)
     }
@@ -204,7 +229,7 @@ class MusicPlaybackService : Service() {
 
     private fun playPrevious() {
         if (playlist.isEmpty()) return
-        val p = player ?: return
+        val p = exoPlayer ?: return
         if (p.currentPosition > 3000) {
             p.seekTo(0)
             return
@@ -231,8 +256,11 @@ class MusicPlaybackService : Service() {
 
     override fun onDestroy() {
         handler.removeCallbacks(progressRunnable)
-        player?.release()
-        player = null
+        mediaSession?.release()
+        mediaSession = null
+        sessionPlayer = null
+        exoPlayer?.release()
+        exoPlayer = null
         super.onDestroy()
     }
 
@@ -252,22 +280,30 @@ class MusicPlaybackService : Service() {
         getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
 
-    private fun buildNotification(title: String): Notification {
+    private fun buildNotification(song: Song?): Notification {
+        val session = mediaSession
+        val title = song?.title ?: getString(R.string.app_name)
+        val subtitle = song?.artist?.takeIf { it.isNotBlank() } ?: getString(R.string.now_playing)
         val open = PendingIntent.getActivity(
             this, 0, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        return NotificationCompat.Builder(this, CHANNEL_ID)
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(title)
-            .setContentText(getString(R.string.now_playing))
+            .setContentText(subtitle)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentIntent(open)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setOngoing(true)
-            .build()
+            .setOnlyAlertOnce(true)
+        if (session != null) {
+            builder.setStyle(MediaStyleNotificationHelper.MediaStyle(session))
+        }
+        return builder.build()
     }
 
-    private fun updateNotification(title: String) {
-        getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, buildNotification(title))
+    private fun updateNotification(song: Song?) {
+        getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, buildNotification(song))
     }
 
     companion object {
