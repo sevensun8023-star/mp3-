@@ -47,7 +47,7 @@ class VinylRecordView @JvmOverloads constructor(
         if (playing) {
             if (rotationAnimator?.isRunning == true) return
             rotationAnimator?.cancel()
-            rotationAnimator = ObjectAnimator.ofFloat(discView, ROTATION, discView.rotation, discView.rotation + 360f).apply {
+            rotationAnimator = ObjectAnimator.ofFloat(discView, View.ROTATION, discView.rotation, discView.rotation + 360f).apply {
                 duration = 18_000L
                 interpolator = LinearInterpolator()
                 repeatCount = ObjectAnimator.INFINITE
