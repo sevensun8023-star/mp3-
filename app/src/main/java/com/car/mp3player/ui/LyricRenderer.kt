@@ -131,7 +131,6 @@ object LyricRenderer {
         pendingPaint.typeface = style.typeface
         sungPaint.isFakeBoldText = style.bold
         pendingPaint.isFakeBoldText = style.bold
-        nextPaint.isFakeBoldText = style.bold
         sungPaint.textSize = style.currentSizePx
         pendingPaint.textSize = style.currentSizePx
 
