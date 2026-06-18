@@ -7,8 +7,12 @@ import android.provider.Settings
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.LinearLayout
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import androidx.core.view.children
 import androidx.fragment.app.Fragment
 import com.car.mp3player.ClusterLyricService
 import com.car.mp3player.LyricsOverlayService
@@ -21,11 +25,13 @@ import com.car.mp3player.model.LyricFontFamily
 import com.car.mp3player.model.LyricThemePreset
 import com.car.mp3player.model.ThemeMode
 import com.google.android.material.chip.Chip
+import com.google.android.material.chip.ChipGroup
 
 class SettingsFragment : Fragment() {
     private var _binding: FragmentSettingsBinding? = null
     private val binding get() = _binding!!
     private lateinit var settings: SettingsRepository
+    private var appThemeChipGroup: ChipGroup? = null
 
     private val overlayPermission = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -176,7 +182,35 @@ class SettingsFragment : Fragment() {
     }
 
     private fun setupAppThemeChips() {
-        binding.appThemeGroup.removeAllViews()
+        val parent = binding.themeGroup.parent as? LinearLayout ?: return
+        appThemeChipGroup?.let { parent.removeView(it) }
+        parent.children.toList().filter { it.tag == "app_theme_label" }.forEach { parent.removeView(it) }
+
+        val label = TextView(requireContext()).apply {
+            tag = "app_theme_label"
+            text = getString(R.string.app_theme)
+            setTextColor(ContextCompat.getColor(requireContext(), R.color.text_primary))
+            textSize = 14f
+            val top = (12 * resources.displayMetrics.density).toInt()
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = top }
+        }
+        val chipGroup = ChipGroup(requireContext()).apply {
+            isSingleSelection = true
+            chipSpacingHorizontal = (6 * resources.displayMetrics.density).toInt()
+            chipSpacingVertical = (4 * resources.displayMetrics.density).toInt()
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = (8 * resources.displayMetrics.density).toInt() }
+        }
+        val insertIndex = parent.indexOfChild(binding.themeGroup) + 1
+        parent.addView(label, insertIndex)
+        parent.addView(chipGroup, insertIndex + 1)
+        appThemeChipGroup = chipGroup
+
         val current = settings.appTheme()
         AppThemePreset.entries.forEach { preset ->
             val chip = Chip(requireContext()).apply {
@@ -188,7 +222,7 @@ class SettingsFragment : Fragment() {
                     activity?.recreate()
                 }
             }
-            binding.appThemeGroup.addView(chip)
+            chipGroup.addView(chip)
         }
     }
 
