@@ -2,6 +2,7 @@ package com.car.mp3player.ui
 
 import android.content.Context
 import android.content.res.ColorStateList
+import android.graphics.Color
 import android.view.View
 import android.view.ViewGroup
 import android.widget.RadioButton
@@ -47,21 +48,47 @@ object AppThemeManager {
                 surface = ContextCompat.getColor(context, R.color.surface),
                 textPrimary = ContextCompat.getColor(context, R.color.text_primary),
                 textSecondary = ContextCompat.getColor(context, R.color.text_secondary),
-                bottomNavBg = ContextCompat.getColor(context, R.color.bottom_nav_bg),
+                bottomNavBg = ContextCompat.getColor(context, R.color.netease_bottom_nav),
                 primary = ContextCompat.getColor(context, R.color.netease_red)
             )
         }
     }
 
-    fun applyBottomNav(nav: BottomNavigationView, palette: Palette) {
-        nav.setBackgroundColor(palette.bottomNavBg)
+    fun applyBottomNav(nav: BottomNavigationView, palette: Palette, backgroundOverride: Int? = null) {
+        val bg = backgroundOverride ?: palette.bottomNavBg
+        val onDark = isColorDark(bg)
+        nav.setBackgroundColor(bg)
         val states = arrayOf(
             intArrayOf(android.R.attr.state_checked),
             intArrayOf(-android.R.attr.state_checked)
         )
-        val colors = intArrayOf(palette.primary, palette.textSecondary)
+        val selected = palette.primary
+        val unselected = if (onDark) {
+            Color.argb(170, Color.red(palette.textPrimary), Color.green(palette.textPrimary), Color.blue(palette.textPrimary))
+        } else {
+            palette.textSecondary
+        }
+        val colors = intArrayOf(selected, unselected)
         nav.itemIconTintList = ColorStateList(states, colors)
         nav.itemTextColor = ColorStateList(states, colors)
+    }
+
+    fun playerBottomNavColors(palette: Palette, playerBackground: Int): Int {
+        return blendColors(playerBackground, Color.parseColor("#CC141414"), 0.55f)
+    }
+
+    fun applyPlayerBottomNav(nav: BottomNavigationView, palette: Palette, playerBackground: Int) {
+        val bg = playerBottomNavColors(palette, playerBackground)
+        val onDark = isColorDark(bg)
+        val selected = if (onDark) Color.WHITE else palette.primary
+        val unselected = if (onDark) Color.argb(160, 255, 255, 255) else palette.textSecondary
+        nav.setBackgroundColor(bg)
+        val states = arrayOf(
+            intArrayOf(android.R.attr.state_checked),
+            intArrayOf(-android.R.attr.state_checked)
+        )
+        nav.itemIconTintList = ColorStateList(states, intArrayOf(selected, unselected))
+        nav.itemTextColor = ColorStateList(states, intArrayOf(selected, unselected))
     }
 
     fun applyCard(card: MaterialCardView, palette: Palette) {
@@ -94,6 +121,23 @@ object AppThemeManager {
             ContextCompat.getColor(context, R.color.mario_text_secondary) ->
                 view.setTextColor(palette.textSecondary)
         }
+    }
+
+    private fun isColorDark(color: Int): Boolean {
+        val r = Color.red(color) / 255.0
+        val g = Color.green(color) / 255.0
+        val b = Color.blue(color) / 255.0
+        val luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b
+        return luminance < 0.5
+    }
+
+    private fun blendColors(from: Int, to: Int, ratio: Float): Int {
+        val inverse = 1f - ratio
+        return Color.rgb(
+            (Color.red(from) * inverse + Color.red(to) * ratio).toInt().coerceIn(0, 255),
+            (Color.green(from) * inverse + Color.green(to) * ratio).toInt().coerceIn(0, 255),
+            (Color.blue(from) * inverse + Color.blue(to) * ratio).toInt().coerceIn(0, 255)
+        )
     }
 
     private fun visitViews(view: View, block: (View) -> Unit) {

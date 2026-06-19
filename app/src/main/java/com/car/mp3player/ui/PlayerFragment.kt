@@ -30,6 +30,7 @@ class PlayerFragment : Fragment(), PlaybackStateHolder.Listener {
     private lateinit var settings: SettingsRepository
     private var showLyrics = false
     private var defaultThemeColor = Color.parseColor("#FF1A1410")
+    private var currentPlayerBgColor = Color.parseColor("#FF1A1410")
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentPlayerBinding.inflate(inflater, container, false)
@@ -66,6 +67,11 @@ class PlayerFragment : Fragment(), PlaybackStateHolder.Listener {
         renderState()
         renderCover(PlaybackStateHolder.coverArtPath)
         updateProgressUi(PlaybackStateHolder.positionMs, PlaybackStateHolder.durationMs)
+        syncBottomNavTheme()
+    }
+
+    fun syncBottomNavTheme() {
+        (activity as? MainHost)?.syncPlayerBottomNav(currentPlayerBgColor)
     }
 
     override fun onStart() {
@@ -141,18 +147,24 @@ class PlayerFragment : Fragment(), PlaybackStateHolder.Listener {
         return "$min:${sec.toString().padStart(2, '0')}"
     }
 
+    private fun applyPlayerBackground(color: Int) {
+        currentPlayerBgColor = color
+        binding.themeBackground.setBackgroundColor(color)
+        syncBottomNavTheme()
+    }
+
     private fun renderCover(coverPath: String?) {
         if (coverPath.isNullOrBlank()) {
-            binding.themeBackground.setBackgroundColor(defaultThemeColor)
+            applyPlayerBackground(defaultThemeColor)
             binding.vinylRecord.setCoverBitmap(null)
             return
         }
         val bitmap = runCatching { BitmapFactory.decodeFile(coverPath) }.getOrNull()
         if (bitmap != null) {
-            binding.themeBackground.setBackgroundColor(AlbumColorExtractor.backgroundColor(bitmap))
+            applyPlayerBackground(AlbumColorExtractor.backgroundColor(bitmap))
             binding.vinylRecord.setCoverBitmap(bitmap)
         } else {
-            binding.themeBackground.setBackgroundColor(defaultThemeColor)
+            applyPlayerBackground(defaultThemeColor)
             binding.vinylRecord.setCoverBitmap(null)
         }
     }

@@ -9,4 +9,6 @@ interface MainHost {
     fun scanMusic(onDone: ((Int) -> Unit)? = null)
     fun allSongs(): List<Song>
     fun notifyLyricStyleChanged()
+    fun refreshAppTheme()
+    fun syncPlayerBottomNav(backgroundColor: Int)
 }

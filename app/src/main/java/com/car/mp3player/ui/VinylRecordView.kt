@@ -19,13 +19,13 @@ class VinylRecordView @JvmOverloads constructor(
     defStyleAttr: Int = 0
 ) : FrameLayout(context, attrs, defStyleAttr) {
 
-    private val discView: ImageView
+    private val rotateGroup: View
     private val coverView: ImageView
     private var rotationAnimator: ObjectAnimator? = null
 
     init {
         LayoutInflater.from(context).inflate(R.layout.view_vinyl_record, this, true)
-        discView = findViewById(R.id.vinylDisc)
+        rotateGroup = findViewById(R.id.vinylRotateGroup)
         coverView = findViewById(R.id.vinylCover)
         coverView.outlineProvider = object : ViewOutlineProvider() {
             override fun getOutline(view: View, outline: Outline) {
@@ -47,7 +47,12 @@ class VinylRecordView @JvmOverloads constructor(
         if (playing) {
             if (rotationAnimator?.isRunning == true) return
             rotationAnimator?.cancel()
-            rotationAnimator = ObjectAnimator.ofFloat(discView, View.ROTATION, discView.rotation, discView.rotation + 360f).apply {
+            rotationAnimator = ObjectAnimator.ofFloat(
+                rotateGroup,
+                View.ROTATION,
+                rotateGroup.rotation,
+                rotateGroup.rotation + 360f
+            ).apply {
                 duration = 18_000L
                 interpolator = LinearInterpolator()
                 repeatCount = ObjectAnimator.INFINITE

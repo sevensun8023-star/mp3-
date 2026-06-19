@@ -1,6 +1,7 @@
 package com.car.mp3player.ui
 
 import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
 import android.text.TextPaint
@@ -34,10 +35,13 @@ object LyricRenderer {
         val baseOther = if (forPlayer) settings.playerFontSizeSp * 0.82f else overlaySize * 0.85f
         val family = settings.lyricFontFamily()
         val bold = !forPlayer && settings.overlayLyricBold
+        val highlight = settings.highlightColor
+        val pending = if (forPlayer) settings.pendingColor else overlayTintColor(highlight, 0.55f)
+        val next = if (forPlayer) settings.nextLineColor else overlayTintColor(highlight, 0.72f)
         return Style(
-            highlightColor = settings.highlightColor,
-            pendingColor = settings.pendingColor,
-            nextLineColor = settings.nextLineColor,
+            highlightColor = highlight,
+            pendingColor = pending,
+            nextLineColor = next,
             currentSizePx = baseCurrent * density * if (forPlayer) settings.currentLineScale else 1f,
             nextSizePx = baseNext * density * if (forPlayer) settings.nextLineScale else 1f,
             otherSizePx = baseOther * density,
@@ -228,4 +232,16 @@ object LyricRenderer {
     }
 
     private fun padding(style: Style) = 24f
+
+    /** 悬浮歌词：用高亮色派生出可见的淡色，避免白字在浅色背景上消失 */
+    private fun overlayTintColor(highlight: Int, alpha: Float): Int {
+        val base = if (Color.alpha(highlight) == 0) Color.parseColor("#EC4141") else highlight
+        val r = Color.red(base)
+        val g = Color.green(base)
+        val b = Color.blue(base)
+        val blendR = ((r + 255) / 2f).toInt().coerceIn(0, 255)
+        val blendG = ((g + 200) / 2f).toInt().coerceIn(0, 255)
+        val blendB = ((b + 200) / 2f).toInt().coerceIn(0, 255)
+        return Color.argb((alpha * 255).toInt().coerceIn(80, 220), blendR, blendG, blendB)
+    }
 }
