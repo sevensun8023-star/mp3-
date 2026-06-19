@@ -12,12 +12,12 @@ enum class LyricThemePreset(
 ) {
     CLASSIC(
         "classic", "经典白",
-        0xE6FFFFFF.toInt(), 0x99FFFFFF.toInt(), 0xBBFFFFFF.toInt(),
+        0xE6FFFFFF.toInt(), 0x99DDDDDD.toInt(), 0xBBCCCCCC.toInt(),
         22f, 18f, 26f
     ),
     NETEASE(
         "netease", "网易云红",
-        0xE6EC4141.toInt(), 0x99FFFFFF.toInt(), 0xBBFFFFFF.toInt(),
+        0xE6EC4141.toInt(), 0xCCFF9999.toInt(), 0xBBFFB3B3.toInt(),
         22f, 18f, 26f
     ),
     PINK(
