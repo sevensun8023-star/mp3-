@@ -15,4 +15,5 @@
     <color name="karaoke_pending">#99FFFFFF</color>
     <color name="karaoke_next">#66FFFFFF</color>
     <color name="bottom_nav_bg">#1A1A1A</color>
+    <color name="netease_bottom_nav">#1E1A1A</color>
 </resources>
