@@ -25,7 +25,8 @@ object LyricRenderer {
         val maxVisualLines: Int,
         val currentScale: Float,
         val nextScale: Float,
-        val bold: Boolean
+        val bold: Boolean,
+        val outline: Boolean
     )
 
     fun styleFrom(settings: SettingsRepository, density: Float, forPlayer: Boolean): Style {
@@ -35,9 +36,9 @@ object LyricRenderer {
         val baseOther = if (forPlayer) settings.playerFontSizeSp * 0.82f else overlaySize * 0.85f
         val family = settings.lyricFontFamily()
         val bold = !forPlayer && settings.overlayLyricBold
-        val highlight = settings.highlightColor
-        val pending = if (forPlayer) settings.pendingColor else overlayTintColor(highlight, 0.55f)
-        val next = if (forPlayer) settings.nextLineColor else overlayTintColor(highlight, 0.72f)
+        val highlight = if (forPlayer) settings.highlightColor else overlayHighlightColor(settings.highlightColor)
+        val pending = if (forPlayer) settings.pendingColor else overlayTintColor(highlight, 0.88f, 0.78f)
+        val next = if (forPlayer) settings.nextLineColor else overlayTintColor(highlight, 0.95f, 0.88f)
         return Style(
             highlightColor = highlight,
             pendingColor = pending,
@@ -49,7 +50,8 @@ object LyricRenderer {
             maxVisualLines = settings.maxLyricVisualLines,
             currentScale = settings.currentLineScale,
             nextScale = settings.nextLineScale,
-            bold = bold
+            bold = bold,
+            outline = !forPlayer
         )
     }
 
@@ -157,7 +159,7 @@ object LyricRenderer {
                 paint.color = if (charGlobalIndex <= sungIndex) style.highlightColor else style.pendingColor
                 val size = if (charGlobalIndex == sungIndex) style.currentSizePx * 1.04f else style.currentSizePx
                 paint.textSize = size
-                canvas.drawText(ch.char, x, topY, paint)
+                drawText(canvas, ch.char, x, topY, paint, style)
                 x += paint.measureText(ch.char)
                 charGlobalIndex++
             }
@@ -187,7 +189,7 @@ object LyricRenderer {
         val pad = padding(style) / 2f
         for (line in lines) {
             val w = paint.measureText(line)
-            canvas.drawText(line, max(pad, (maxWidth - w) / 2f), y, paint)
+            drawText(canvas, line, max(pad, (maxWidth - w) / 2f), y, paint, style)
             y += lineHeight
         }
     }
@@ -233,15 +235,49 @@ object LyricRenderer {
 
     private fun padding(style: Style) = 24f
 
-    /** 悬浮歌词：用高亮色派生出可见的淡色，避免白字在浅色背景上消失 */
-    private fun overlayTintColor(highlight: Int, alpha: Float): Int {
-        val base = if (Color.alpha(highlight) == 0) Color.parseColor("#EC4141") else highlight
-        val r = Color.red(base)
-        val g = Color.green(base)
-        val b = Color.blue(base)
-        val blendR = ((r + 255) / 2f).toInt().coerceIn(0, 255)
-        val blendG = ((g + 200) / 2f).toInt().coerceIn(0, 255)
-        val blendB = ((b + 200) / 2f).toInt().coerceIn(0, 255)
-        return Color.argb((alpha * 255).toInt().coerceIn(80, 220), blendR, blendG, blendB)
+    private fun drawText(canvas: Canvas, text: String, x: Float, y: Float, paint: Paint, style: Style) {
+        if (!style.outline) {
+            canvas.drawText(text, x, y, paint)
+            return
+        }
+        val fillColor = paint.color
+        val strokeWidth = (paint.textSize * 0.08f).coerceIn(2.5f, 7f)
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = strokeWidth
+        paint.strokeJoin = Paint.Join.ROUND
+        paint.color = Color.argb(220, 0, 0, 0)
+        canvas.drawText(text, x, y, paint)
+        paint.style = Paint.Style.FILL
+        paint.color = fillColor
+        paint.clearShadowLayer()
+        paint.setShadowLayer(strokeWidth * 0.6f, 0f, strokeWidth * 0.35f, Color.argb(120, 0, 0, 0))
+        canvas.drawText(text, x, y, paint)
+        paint.clearShadowLayer()
+    }
+
+    /** 悬浮歌词高亮色：提高饱和度与不透明度 */
+    private fun overlayHighlightColor(color: Int): Int {
+        val base = if (Color.alpha(color) == 0) Color.parseColor("#EC4141") else color
+        val hsv = FloatArray(3)
+        Color.colorToHSV(base, hsv)
+        if (hsv[1] < 0.08f) {
+            return Color.argb(255, 255, 255, 255)
+        }
+        hsv[1] = min(1f, hsv[1] * 1.45f)
+        hsv[2] = min(1f, hsv[2] * 1.08f)
+        return Color.HSVToColor(255, hsv)
+    }
+
+    /** 悬浮歌词次要行：保持色相，略提亮，不透明度过关 */
+    private fun overlayTintColor(highlight: Int, valueScale: Float, alpha: Float): Int {
+        val hsv = FloatArray(3)
+        Color.colorToHSV(highlight, hsv)
+        if (hsv[1] < 0.08f) {
+            val gray = (220 * valueScale).toInt().coerceIn(160, 255)
+            return Color.argb((alpha * 255).toInt().coerceIn(180, 255), gray, gray, gray)
+        }
+        hsv[1] = min(1f, hsv[1] * 1.15f)
+        hsv[2] = min(1f, hsv[2] * valueScale)
+        return Color.HSVToColor((alpha * 255).toInt().coerceIn(180, 255), hsv)
     }
 }
