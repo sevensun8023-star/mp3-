@@ -19,6 +19,7 @@ import com.car.mp3player.ui.MainHost
 import com.car.mp3player.ui.MainPagerAdapter
 import com.car.mp3player.ui.PlayerFragment
 import com.car.mp3player.ui.PlaylistFragment
+import com.car.mp3player.ui.StartupSoundPlayer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -61,6 +62,7 @@ class MainActivity : AppCompatActivity(), MainHost {
 
         restoreCachedPlaylist()
         requestPermissionsAndScan()
+        StartupSoundPlayer.playIfNeeded(this, settings)
     }
 
     override fun onResume() {
