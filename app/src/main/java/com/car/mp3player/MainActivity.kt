@@ -47,19 +47,28 @@ class MainActivity : AppCompatActivity(), MainHost {
         applyAppTheme()
 
         binding.bottomNav.setOnItemSelectedListener { item ->
-            binding.viewPager.setCurrentItem(
-                when (item.itemId) {
-                    R.id.nav_playlist -> 0
-                    R.id.nav_player -> 1
-                    else -> 2
-                },
-                false
-            )
+            val index = when (item.itemId) {
+                R.id.nav_playlist -> 0
+                R.id.nav_player -> 1
+                else -> 2
+            }
+            binding.viewPager.setCurrentItem(index, false)
+            if (item.itemId != R.id.nav_player) {
+                applyAppTheme()
+            }
             true
         }
 
         restoreCachedPlaylist()
         requestPermissionsAndScan()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        applyAppTheme()
+        if (binding.viewPager.currentItem == 1) {
+            (supportFragmentManager.findFragmentByTag("f1") as? PlayerFragment)?.syncBottomNavTheme()
+        }
     }
 
     private fun restoreCachedPlaylist() {
@@ -119,10 +128,23 @@ class MainActivity : AppCompatActivity(), MainHost {
 
     override fun allSongs(): List<Song> = songs
 
+    override fun refreshAppTheme() {
+        applyAppTheme()
+    }
+
+    override fun syncPlayerBottomNav(backgroundColor: Int) {
+        if (binding.viewPager.currentItem != 1) return
+        val palette = AppThemeManager.palette(this, settings)
+        AppThemeManager.applyPlayerBottomNav(binding.bottomNav, palette, backgroundColor)
+        window.navigationBarColor = AppThemeManager.playerBottomNavColors(palette, backgroundColor)
+    }
+
     private fun applyAppTheme() {
         val palette = AppThemeManager.palette(this, settings)
         binding.root.setBackgroundColor(palette.background)
         AppThemeManager.applyBottomNav(binding.bottomNav, palette)
+        window.navigationBarColor = palette.bottomNavBg
+        window.statusBarColor = palette.background
     }
 
     private fun requestPermissionsAndScan() {
