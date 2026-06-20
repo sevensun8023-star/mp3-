@@ -95,7 +95,7 @@ class ScrollLyricView @JvmOverloads constructor(
 
         if (lines.isEmpty()) {
             LyricRenderer.drawWrappedStaticLine(
-                canvas, "♪ 暂无歌词", height / 2f, pendingPaint, style, width.toFloat(),
+                canvas, LyricRenderer.PLACEHOLDER_LINE, height / 2f, pendingPaint, style, width.toFloat(),
                 style.pendingColor, style.otherSizePx, 2
             )
             return

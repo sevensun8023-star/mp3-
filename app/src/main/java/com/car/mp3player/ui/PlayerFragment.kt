@@ -197,7 +197,8 @@ class PlayerFragment : Fragment(), PlaybackStateHolder.Listener {
     }
 
     private fun sendAction(action: String) {
-        requireContext().startService(
+        ContextCompat.startForegroundService(
+            requireContext(),
             Intent(requireContext(), MusicPlaybackService::class.java).apply { this.action = action }
         )
     }

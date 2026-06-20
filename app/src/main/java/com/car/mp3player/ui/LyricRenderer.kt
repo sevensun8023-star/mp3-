@@ -14,6 +14,8 @@ import kotlin.math.min
 
 object LyricRenderer {
 
+    const val PLACEHOLDER_LINE = "-----------"
+
     data class Style(
         val highlightColor: Int,
         val pendingColor: Int,
@@ -221,7 +223,7 @@ object LyricRenderer {
                 canvas, line, positionMs, blockH - gap, style, maxW, sungPaint, pendingPaint
             )
         } ?: drawWrappedStaticLine(
-            canvas, "♪ 等待播放", blockH - gap, pendingPaint, style, maxW,
+            canvas, PLACEHOLDER_LINE, blockH - gap, pendingPaint, style, maxW,
             style.pendingColor, style.currentSizePx, 1
         )
 
@@ -249,10 +251,7 @@ object LyricRenderer {
         canvas.drawText(text, x, y, paint)
         paint.style = Paint.Style.FILL
         paint.color = fillColor
-        paint.clearShadowLayer()
-        paint.setShadowLayer(strokeWidth * 0.6f, 0f, strokeWidth * 0.35f, Color.argb(120, 0, 0, 0))
         canvas.drawText(text, x, y, paint)
-        paint.clearShadowLayer()
     }
 
     /** 悬浮歌词高亮色：提高饱和度与不透明度 */
