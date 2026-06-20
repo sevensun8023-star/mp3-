@@ -30,32 +30,15 @@ class BootResumeService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         scope.launch {
-            val cached = withContext(Dispatchers.IO) {
-                PlaybackBootstrap.loadCachedSongs(this@BootResumeService)
-            }
-            if (cached.isNotEmpty()) {
-                PlaybackStateHolder.setPlaylist(cached)
-                if (settings.startupSoundEnabled) {
-                    StartupSoundPlayer.playBeforeBootPlayback(this@BootResumeService, settings)
-                }
-                PlaybackBootstrap.resumeIfNeeded(this@BootResumeService, cached, settings)
+            delay(BOOT_WAIT_MS)
+            var resumed = attemptResume(playGreeting = true)
+            if (!resumed && !PlaybackStateHolder.isPlaying) {
+                delay(RETRY_WAIT_MS)
+                resumed = attemptResume(playGreeting = !StartupSoundPlayer.hasPlayedThisSession())
             }
 
             if (settings.bootOpenApp) {
                 launchMainActivity()
-            }
-
-            withContext(Dispatchers.IO) {
-                val scanned = PlaybackBootstrap.scanSongs(this@BootResumeService, settings)
-                if (scanned.isNotEmpty()) {
-                    PlaybackStateHolder.setPlaylist(scanned)
-                    if (!PlaybackStateHolder.isPlaying) {
-                        if (settings.startupSoundEnabled && cached.isEmpty()) {
-                            StartupSoundPlayer.playBeforeBootPlayback(this@BootResumeService, settings)
-                        }
-                        PlaybackBootstrap.resumeIfNeeded(this@BootResumeService, scanned, settings)
-                    }
-                }
             }
 
             if (settings.bootReturnHome && settings.bootAutoStart) {
@@ -67,6 +50,27 @@ class BootResumeService : Service() {
             stopSelf()
         }
         return START_NOT_STICKY
+    }
+
+    private suspend fun attemptResume(playGreeting: Boolean): Boolean {
+        if (!settings.autoResumePlayback) return false
+
+        var songs = withContext(Dispatchers.IO) {
+            PlaybackBootstrap.loadCachedSongs(this@BootResumeService)
+        }
+        if (songs.isEmpty()) {
+            songs = withContext(Dispatchers.IO) {
+                PlaybackBootstrap.scanSongs(this@BootResumeService, settings)
+            }
+        }
+        if (songs.isEmpty()) return false
+
+        PlaybackStateHolder.setPlaylist(songs)
+        if (playGreeting && settings.startupSoundEnabled && !StartupSoundPlayer.hasPlayedThisSession()) {
+            StartupSoundPlayer.playBeforeBootPlayback(this@BootResumeService, settings)
+        }
+        PlaybackBootstrap.resumeIfNeeded(this@BootResumeService, songs, settings)
+        return PlaybackStateHolder.isPlaying
     }
 
     private fun launchMainActivity() {
@@ -109,5 +113,7 @@ class BootResumeService : Service() {
     companion object {
         private const val CHANNEL_ID = "boot_resume"
         private const val NOTIFICATION_ID = 1002
+        private const val BOOT_WAIT_MS = 5000L
+        private const val RETRY_WAIT_MS = 10_000L
     }
 }

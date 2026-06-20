@@ -9,6 +9,7 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
 import com.car.mp3player.data.PlaybackBootstrap
 import com.car.mp3player.data.SettingsRepository
 import com.car.mp3player.databinding.ActivityMainBinding
@@ -60,9 +61,14 @@ class MainActivity : AppCompatActivity(), MainHost {
             true
         }
 
-        restoreCachedPlaylist()
+        restoreCachedPlaylist(resumePlayback = false)
         requestPermissionsAndScan()
-        StartupSoundPlayer.playIfNeeded(this, settings)
+        lifecycleScope.launch {
+            if (!PlaybackStateHolder.isPlaying) {
+                StartupSoundPlayer.playBeforeBootPlayback(this@MainActivity, settings)
+            }
+            restoreCachedPlaylist(resumePlayback = true)
+        }
     }
 
     override fun onResume() {
@@ -73,13 +79,13 @@ class MainActivity : AppCompatActivity(), MainHost {
         }
     }
 
-    private fun restoreCachedPlaylist() {
+    private fun restoreCachedPlaylist(resumePlayback: Boolean = true) {
         songs = PlaybackBootstrap.loadCachedSongs(this)
         if (songs.isEmpty()) return
         PlaybackStateHolder.setPlaylist(songs)
         binding.root.post {
             (supportFragmentManager.findFragmentByTag("f0") as? PlaylistFragment)?.refreshFromHost()
-            if (!PlaybackStateHolder.isPlaying) {
+            if (resumePlayback && !PlaybackStateHolder.isPlaying) {
                 PlaybackBootstrap.resumeIfNeeded(this, songs, settings)
             }
         }
