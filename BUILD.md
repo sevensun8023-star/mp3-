@@ -83,13 +83,68 @@ adb install -r app-debug.apk
 A：APK 需要在本机或云端用 Android 编译器打包。当前 Cursor 所在电脑没有安装这些工具，我只能写好源码和自动编译配置，不能凭空变出安装包。
 
 **Q：Build 报错怎么办？**  
-A：把报错截图发给我，我帮你看。
+A：把 Actions 里红色报错那几行复制发给我。常见原因见下方「上传文件注意事项」。
+
+**Q：每次只改几个文件上传，为什么总编译失败？**  
+A：见下方专门说明。
 
 **Q：安装时提示「未知来源」？**  
 A：在车机设置里允许该来源安装应用（DiLink 一般在应用管理或安全设置里）。
 
 **Q：GitHub Actions 要花钱吗？**  
 A：个人仓库每月有免费额度，编译这个小项目足够用。
+
+---
+
+## 上传文件注意事项（重要！）
+
+用 GitHub 网页「Add files via upload」更新代码时，**最容易踩坑**：
+
+### 1. 路径必须带 `app/` 前缀
+
+| 错误 ❌ | 正确 ✅ |
+|--------|--------|
+| 上传到仓库根目录 `VinylRecordView.kt` | `app/src/main/java/com/car/mp3player/ui/VinylRecordView.kt` |
+| 根目录 `build.gradle.kts`（会覆盖整个项目配置） | `app/build.gradle.kts` |
+
+根目录的 `build.gradle.kts` 只能有插件声明，**不要**用 app 里的内容覆盖它。
+
+### 2. 一次更新要上传「成套」文件
+
+改了一个功能，相关文件要**一起上传**，不能只传一两个。例如 v3.4.0 至少要传这 13 个：
+
+```
+app/build.gradle.kts
+app/src/main/java/com/car/mp3player/MainActivity.kt
+app/src/main/java/com/car/mp3player/ui/MainHost.kt
+app/src/main/java/com/car/mp3player/ui/AppThemeManager.kt
+app/src/main/java/com/car/mp3player/ui/PlayerFragment.kt
+app/src/main/java/com/car/mp3player/ui/VinylRecordView.kt
+app/src/main/java/com/car/mp3player/ui/LyricRenderer.kt
+app/src/main/java/com/car/mp3player/model/LyricThemePreset.kt
+app/src/main/res/layout/activity_main.xml
+app/src/main/res/layout/view_vinyl_record.xml
+app/src/main/res/values/colors.xml
+app/src/main/res/values/themes.xml
+app/src/main/res/values-night/colors.xml
+app/src/main/res/drawable/ic_launcher_foreground.xml
+```
+
+漏传 `MainHost.kt` 但传了 `MainActivity.kt` → 报「未实现接口方法」。  
+漏传 `view_vinyl_record.xml` 但传了 `VinylRecordView.kt` → 报「找不到 vinylRotateGroup」。
+
+### 3. 以前几次报错的真实原因（已修）
+
+| 版本 | 报错原因 |
+|------|----------|
+| v3.3.0 | `VinylRecordView.kt` 写了 `ROTATION` 应为 `View.ROTATION` |
+| v3.3.1 | `LyricRenderer.kt` 多写了一行不存在的 `nextPaint` |
+
+**v3.4.0 本地已实测编译通过**，代码本身没问题。
+
+### 4. 上传后确认版本号
+
+打开 GitHub 上 `app/build.gradle.kts`，确认 `versionName` 是你期望的版本（当前应为 `3.4.0`），再 Run workflow。
 
 ---
 
