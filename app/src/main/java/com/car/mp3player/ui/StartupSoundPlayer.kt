@@ -12,42 +12,43 @@ object StartupSoundPlayer {
     @Volatile
     private var greetingPlayedThisSession = false
 
-    /** 开机续播前播放问候音（阻塞直到播完） */
+    fun hasPlayedThisSession(): Boolean = greetingPlayedThisSession
+
+    /** 播放问候音并等待结束（续播 / 打开 App 前调用） */
     suspend fun playBeforeBootPlayback(context: Context, settings: SettingsRepository) {
         if (!settings.startupSoundEnabled || greetingPlayedThisSession) return
-        greetingPlayedThisSession = true
         suspendCancellableCoroutine { cont ->
-            playInternal(context.applicationContext) { cont.resume(Unit) }
+            playInternal(context.applicationContext) {
+                greetingPlayedThisSession = true
+                cont.resume(Unit)
+            }
         }
-    }
-
-    /** 手动打开 App 时播放（若开机已播过则跳过） */
-    fun playIfNeeded(context: Context, settings: SettingsRepository) {
-        if (!settings.startupSoundEnabled || greetingPlayedThisSession) return
-        greetingPlayedThisSession = true
-        playInternal(context.applicationContext) {}
     }
 
     private fun playInternal(context: Context, onDone: () -> Unit) {
         runCatching {
-            MediaPlayer.create(context, R.raw.hello_linjun)?.apply {
-                setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                        .build()
-                )
-                setOnCompletionListener {
-                    release()
-                    onDone()
-                }
-                setOnErrorListener { _, _, _ ->
-                    release()
-                    onDone()
-                    true
-                }
-                start()
-            } ?: onDone()
+            val player = MediaPlayer.create(context, R.raw.hello_linjun)
+            if (player == null) {
+                onDone()
+                return
+            }
+            player.setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                    .build()
+            )
+            player.setVolume(1f, 1f)
+            player.setOnCompletionListener {
+                player.release()
+                onDone()
+            }
+            player.setOnErrorListener { _, _, _ ->
+                player.release()
+                onDone()
+                true
+            }
+            player.start()
         }.onFailure {
             onDone()
         }

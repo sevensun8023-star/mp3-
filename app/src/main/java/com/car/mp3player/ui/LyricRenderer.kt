@@ -53,7 +53,7 @@ object LyricRenderer {
             currentScale = settings.currentLineScale,
             nextScale = settings.nextLineScale,
             bold = bold,
-            outline = !forPlayer
+            outline = false
         )
     }
 
