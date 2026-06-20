@@ -6,6 +6,9 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
 import android.os.Handler
@@ -49,6 +52,27 @@ class MusicPlaybackService : Service() {
     private val metadataLoader by lazy {
         SongMetadataLoader(cacheDir, settings, coverFetcher = com.car.mp3player.data.CoverArtFetcher(this))
     }
+    private val audioManager by lazy { getSystemService(AUDIO_SERVICE) as AudioManager }
+    private var audioFocusRequest: AudioFocusRequest? = null
+    private var hasAudioFocus = false
+
+    private val audioFocusListener = AudioManager.OnAudioFocusChangeListener { focus ->
+        val player = exoPlayer ?: return@OnAudioFocusChangeListener
+        when (focus) {
+            AudioManager.AUDIOFOCUS_GAIN -> {
+                hasAudioFocus = true
+                if (!player.isPlaying && playlist.isNotEmpty()) player.play()
+            }
+            AudioManager.AUDIOFOCUS_LOSS -> {
+                hasAudioFocus = false
+                player.pause()
+            }
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT,
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
+                player.pause()
+            }
+        }
+    }
 
     private val progressRunnable = object : Runnable {
         override fun run() {
@@ -71,6 +95,13 @@ class MusicPlaybackService : Service() {
             addListener(object : Player.Listener {
                 override fun onPlaybackStateChanged(playbackState: Int) {
                     if (playbackState == Player.STATE_ENDED) playNext()
+                }
+
+                override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                    val idx = currentMediaItemIndex
+                    if (idx in playlist.indices && idx != currentIndex) {
+                        applyTrackChange(idx)
+                    }
                 }
             })
         }
@@ -138,37 +169,113 @@ class MusicPlaybackService : Service() {
 
     private fun playSongAt(index: Int, seekMs: Long = 0L) {
         if (index !in playlist.indices) return
+        acquireAudioFocus()
         currentIndex = index
         val song = playlist[index]
+        val player = exoPlayer ?: return
+
+        if (isQueueSynced(player)) {
+            player.seekTo(index, seekMs)
+        } else {
+            player.setMediaItems(buildMediaItems(), index, seekMs)
+            player.prepare()
+        }
+        player.play()
+
         lastClusterMetadataKey = ""
         PlaybackStateHolder.setCoverArt(null)
         currentLines = loadLocalLyrics(song)
-
-        val mediaItem = MediaItem.Builder()
-            .setUri(songUri(song))
-            .setMediaId(song.path)
-            .setMediaMetadata(
-                MediaMetadata.Builder()
-                    .setTitle(song.title)
-                    .setArtist(song.artist)
-                    .build()
-            )
-            .build()
-
-        exoPlayer?.setMediaItem(mediaItem)
-        exoPlayer?.prepare()
-        if (seekMs > 0L) exoPlayer?.seekTo(seekMs)
-        exoPlayer?.play()
         startForeground(NOTIFICATION_ID, buildNotification(song))
         handler.removeCallbacks(progressRunnable)
         handler.post(progressRunnable)
         persistProgress(song, seekMs)
-        PlaybackStateHolder.update(song, true, seekMs, currentLines, exoPlayer?.duration?.coerceAtLeast(0L) ?: 0L)
+        PlaybackStateHolder.update(song, true, seekMs, currentLines, player.duration.coerceAtLeast(0L))
         updateClusterMetadata(song, seekMs)
         LyricsOverlayService.start(applicationContext)
         LyricsOverlayService.updateLyrics(applicationContext, PlaybackStateHolder.lyricState)
         ClusterLyricService.start(applicationContext)
         loadMetadataAsync(song)
+    }
+
+    private fun applyTrackChange(index: Int) {
+        if (index !in playlist.indices) return
+        currentIndex = index
+        val song = playlist[index]
+        lastClusterMetadataKey = ""
+        PlaybackStateHolder.setCoverArt(null)
+        currentLines = loadLocalLyrics(song)
+        val player = exoPlayer
+        val pos = player?.currentPosition ?: 0L
+        persistProgress(song, pos)
+        PlaybackStateHolder.update(
+            song,
+            player?.isPlaying == true,
+            pos,
+            currentLines,
+            player?.duration?.coerceAtLeast(0L) ?: PlaybackStateHolder.durationMs
+        )
+        updateClusterMetadata(song, pos)
+        updateNotification(song)
+        LyricsOverlayService.updateLyrics(applicationContext, PlaybackStateHolder.lyricState)
+        loadMetadataAsync(song)
+    }
+
+    private fun buildMediaItems(): List<MediaItem> {
+        return playlist.map { song ->
+            MediaItem.Builder()
+                .setUri(songUri(song))
+                .setMediaId(song.path)
+                .setMediaMetadata(
+                    MediaMetadata.Builder()
+                        .setTitle(song.title)
+                        .setArtist(song.artist)
+                        .build()
+                )
+                .build()
+        }
+    }
+
+    private fun isQueueSynced(player: ExoPlayer): Boolean {
+        if (player.mediaItemCount != playlist.size || playlist.isEmpty()) return false
+        for (i in playlist.indices) {
+            if (player.getMediaItemAt(i).mediaId != playlist[i].path) return false
+        }
+        return true
+    }
+
+    private fun acquireAudioFocus() {
+        if (hasAudioFocus) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val attrs = AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_MEDIA)
+                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                .build()
+            val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                .setAudioAttributes(attrs)
+                .setAcceptsDelayedFocusGain(true)
+                .setOnAudioFocusChangeListener(audioFocusListener)
+                .build()
+            audioFocusRequest = request
+            hasAudioFocus = audioManager.requestAudioFocus(request) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+        } else {
+            @Suppress("DEPRECATION")
+            hasAudioFocus = audioManager.requestAudioFocus(
+                audioFocusListener,
+                AudioManager.STREAM_MUSIC,
+                AudioManager.AUDIOFOCUS_GAIN
+            ) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+        }
+    }
+
+    private fun releaseAudioFocus() {
+        if (!hasAudioFocus) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            audioFocusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
+        } else {
+            @Suppress("DEPRECATION")
+            audioManager.abandonAudioFocus(audioFocusListener)
+        }
+        hasAudioFocus = false
     }
 
     private fun loadLocalLyrics(song: Song): List<com.car.mp3player.model.LrcLine> {
@@ -223,6 +330,7 @@ class MusicPlaybackService : Service() {
 
     private fun playNext() {
         if (playlist.isEmpty()) return
+        acquireAudioFocus()
         val next = when (PlaybackStateHolder.playMode) {
             PlaybackMode.SHUFFLE -> {
                 if (shuffleQueue.isEmpty()) refillShuffleQueue()
@@ -313,6 +421,7 @@ class MusicPlaybackService : Service() {
 
     override fun onDestroy() {
         handler.removeCallbacks(progressRunnable)
+        releaseAudioFocus()
         mediaSession?.release()
         mediaSession = null
         sessionPlayer = null

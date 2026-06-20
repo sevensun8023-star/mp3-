@@ -10,6 +10,7 @@ import androidx.core.app.NotificationCompat
 import com.car.mp3player.data.PlaybackBootstrap
 import com.car.mp3player.data.SettingsRepository
 import com.car.mp3player.playback.PlaybackStateHolder
+import com.car.mp3player.ui.StartupSoundPlayer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -34,6 +35,9 @@ class BootResumeService : Service() {
             }
             if (cached.isNotEmpty()) {
                 PlaybackStateHolder.setPlaylist(cached)
+                if (settings.startupSoundEnabled) {
+                    StartupSoundPlayer.playBeforeBootPlayback(this@BootResumeService, settings)
+                }
                 PlaybackBootstrap.resumeIfNeeded(this@BootResumeService, cached, settings)
             }
 
@@ -46,6 +50,9 @@ class BootResumeService : Service() {
                 if (scanned.isNotEmpty()) {
                     PlaybackStateHolder.setPlaylist(scanned)
                     if (!PlaybackStateHolder.isPlaying) {
+                        if (settings.startupSoundEnabled && cached.isEmpty()) {
+                            StartupSoundPlayer.playBeforeBootPlayback(this@BootResumeService, settings)
+                        }
                         PlaybackBootstrap.resumeIfNeeded(this@BootResumeService, scanned, settings)
                     }
                 }
