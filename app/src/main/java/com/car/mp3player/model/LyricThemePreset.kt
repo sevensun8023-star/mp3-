@@ -1,5 +1,8 @@
 package com.car.mp3player.model
 
+import androidx.annotation.FontRes
+import com.car.mp3player.R
+
 enum class LyricThemePreset(
     val id: String,
     val displayName: String,
@@ -12,37 +15,37 @@ enum class LyricThemePreset(
 ) {
     CLASSIC(
         "classic", "经典白",
-        0xE6FFFFFF.toInt(), 0x99DDDDDD.toInt(), 0xBBCCCCCC.toInt(),
+        0xFFFFFFFF.toInt(), 0x99FFFFFF.toInt(), 0xCCFFFFFF.toInt(),
         22f, 18f, 26f
     ),
     NETEASE(
         "netease", "网易云红",
-        0xE6EC4141.toInt(), 0xCCFF9999.toInt(), 0xBBFFB3B3.toInt(),
+        0xFFEC4141.toInt(), 0x99FFFFFF.toInt(), 0xCCFFFFFF.toInt(),
         22f, 18f, 26f
     ),
     PINK(
         "pink", "淡粉",
-        0xE6E891A8.toInt(), 0x99FFF0F3.toInt(), 0xBBFADCE4.toInt(),
+        0xFFE891A8.toInt(), 0x99FFFFFF.toInt(), 0xCCFFFFFF.toInt(),
         21f, 17f, 25f
     ),
     GREEN(
         "green", "淡绿",
-        0xE67CB89A.toInt(), 0x99F0FAF4.toInt(), 0xBBDCF5E8.toInt(),
+        0xFF7CB89A.toInt(), 0x99FFFFFF.toInt(), 0xCCFFFFFF.toInt(),
         21f, 17f, 25f
     ),
     BLUE(
         "blue", "淡蓝",
-        0xE67BA3D0.toInt(), 0x99F0F6FC.toInt(), 0xBBDBEAFE.toInt(),
+        0xFF7BA3D0.toInt(), 0x99FFFFFF.toInt(), 0xCCFFFFFF.toInt(),
         21f, 17f, 25f
     ),
     MINT(
         "mint", "薄荷",
-        0xE66BBFAD.toInt(), 0x99F2FBF8.toInt(), 0xBBCCF5EC.toInt(),
+        0xFF6BBFAD.toInt(), 0x99FFFFFF.toInt(), 0xCCFFFFFF.toInt(),
         21f, 17f, 25f
     ),
     LAVENDER(
         "lavender", "薰衣草",
-        0xE6A99BD4.toInt(), 0x99F7F3FC.toInt(), 0xBBE9DFF8.toInt(),
+        0xFFA99BD4.toInt(), 0x99FFFFFF.toInt(), 0xCCFFFFFF.toInt(),
         21f, 17f, 25f
     );
 
@@ -53,14 +56,22 @@ enum class LyricThemePreset(
     }
 }
 
-enum class LyricFontFamily(val id: String, val displayName: String) {
-    DEFAULT("default", "默认"),
-    SANS("sans", "简约"),
-    SERIF("serif", "文艺"),
-    ROUND("round", "圆润");
+enum class LyricFontFamily(
+    val id: String,
+    val displayName: String,
+    @FontRes val fontRes: Int = 0
+) {
+    DEFAULT("default", "系统默认"),
+    NOTO_SANS("noto_sans", "思源黑体", R.font.lyric_noto_sans_sc),
+    QINGKE("qingke", "站酷快乐", R.font.lyric_zcool_qingke),
+    MASHAN("mashan", "马善政楷", R.font.lyric_ma_shan_zheng),
+    SERIF("serif", "思源宋体", R.font.lyric_noto_serif_sc);
 
     companion object {
-        fun fromId(id: String): LyricFontFamily =
-            entries.firstOrNull { it.id == id } ?: DEFAULT
+        fun fromId(id: String): LyricFontFamily = when (id) {
+            "sans" -> NOTO_SANS
+            "round" -> QINGKE
+            else -> entries.firstOrNull { it.id == id } ?: DEFAULT
+        }
     }
 }
