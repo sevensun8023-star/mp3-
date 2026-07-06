@@ -23,7 +23,7 @@ object PlaybackStateHolder {
         private set
     var coverArtPath: String? = null
         private set
-    var playMode: PlaybackMode = PlaybackMode.ORDER
+    var playMode: PlaybackMode = PlaybackMode.SHUFFLE
         private set
 
     val currentSong: Song?
@@ -62,6 +62,15 @@ object PlaybackStateHolder {
     fun setPlayMode(mode: PlaybackMode) {
         playMode = mode
         listeners.forEach { it.onPlayModeChanged(mode) }
+    }
+
+    fun updateSongLrcPath(songPath: String, lrcPath: String) {
+        val idx = songs.indexOfFirst { it.path == songPath }
+        if (idx < 0) return
+        val updated = songs.toMutableList()
+        updated[idx] = updated[idx].copy(lrcPath = lrcPath)
+        songs = updated
+        listeners.forEach { it.onPlaylistChanged(songs) }
     }
 
     fun setCoverArt(path: String?) {
