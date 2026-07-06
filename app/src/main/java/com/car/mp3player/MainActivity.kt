@@ -48,6 +48,9 @@ class MainActivity : AppCompatActivity(), MainHost {
         binding.viewPager.offscreenPageLimit = 3
         applyAppTheme()
 
+        binding.bottomNav.selectedItemId = R.id.nav_player
+        binding.viewPager.setCurrentItem(1, false)
+
         binding.bottomNav.setOnItemSelectedListener { item ->
             val index = when (item.itemId) {
                 R.id.nav_playlist -> 0

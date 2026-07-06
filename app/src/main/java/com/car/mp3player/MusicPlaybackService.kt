@@ -21,6 +21,7 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaStyleNotificationHelper
+import com.car.mp3player.data.PlaylistCache
 import com.car.mp3player.data.SettingsRepository
 import com.car.mp3player.data.SongMetadataLoader
 import com.car.mp3player.lrc.LrcParser
@@ -50,7 +51,12 @@ class MusicPlaybackService : Service() {
     private var lastClusterMetadataKey = ""
     private val metadataScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val metadataLoader by lazy {
-        SongMetadataLoader(cacheDir, settings, coverFetcher = com.car.mp3player.data.CoverArtFetcher(this))
+        SongMetadataLoader(
+            applicationContext,
+            cacheDir,
+            settings,
+            coverFetcher = com.car.mp3player.data.CoverArtFetcher(this)
+        )
     }
     private val audioManager by lazy { getSystemService(AUDIO_SERVICE) as AudioManager }
     private var audioFocusRequest: AudioFocusRequest? = null
@@ -84,6 +90,9 @@ class MusicPlaybackService : Service() {
             if (++saveTick % 25 == 0) {
                 persistProgress(song, p.currentPosition)
             }
+            if (p.isPlaying && saveTick % 50 == 0) {
+                ensureExclusiveAudioFocus()
+            }
             handler.postDelayed(this, 120L)
         }
     }
@@ -91,6 +100,7 @@ class MusicPlaybackService : Service() {
     override fun onCreate() {
         super.onCreate()
         createChannel()
+        PlaybackStateHolder.setPlayMode(settings.playMode)
         val player = ExoPlayer.Builder(this).build().apply {
             addListener(object : Player.Listener {
                 override fun onPlaybackStateChanged(playbackState: Int) {
@@ -112,7 +122,14 @@ class MusicPlaybackService : Service() {
             onSkipPrevious = { playPrevious() },
             hasPlaylist = { playlist.isNotEmpty() }
         )
-        mediaSession = MediaSession.Builder(this, sessionPlayer!!).build()
+        mediaSession = MediaSession.Builder(this, sessionPlayer!!)
+            .setSessionActivity(
+                PendingIntent.getActivity(
+                    this, 0, Intent(this, MainActivity::class.java),
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+            )
+            .build()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -156,6 +173,7 @@ class MusicPlaybackService : Service() {
 
     private fun setPlayMode(mode: PlaybackMode) {
         PlaybackStateHolder.setPlayMode(mode)
+        settings.playMode = mode
         refillShuffleQueue()
     }
 
@@ -169,7 +187,7 @@ class MusicPlaybackService : Service() {
 
     private fun playSongAt(index: Int, seekMs: Long = 0L) {
         if (index !in playlist.indices) return
-        acquireAudioFocus()
+        ensureExclusiveAudioFocus()
         currentIndex = index
         val song = playlist[index]
         val player = exoPlayer ?: return
@@ -253,7 +271,8 @@ class MusicPlaybackService : Service() {
             val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
                 .setAudioAttributes(attrs)
                 .setAcceptsDelayedFocusGain(true)
-                .setOnAudioFocusChangeListener(audioFocusListener)
+                .setWillPauseWhenDucked(false)
+                .setOnAudioFocusChangeListener(audioFocusListener, handler)
                 .build()
             audioFocusRequest = request
             hasAudioFocus = audioManager.requestAudioFocus(request) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
@@ -265,6 +284,11 @@ class MusicPlaybackService : Service() {
                 AudioManager.AUDIOFOCUS_GAIN
             ) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
         }
+    }
+
+    private fun ensureExclusiveAudioFocus() {
+        releaseAudioFocus()
+        acquireAudioFocus()
     }
 
     private fun releaseAudioFocus() {
@@ -279,12 +303,16 @@ class MusicPlaybackService : Service() {
     }
 
     private fun loadLocalLyrics(song: Song): List<com.car.mp3player.model.LrcLine> {
-        song.lrcPath?.let { path ->
-            runCatching { LrcParser.parseFile(File(path)) }.getOrNull()?.takeIf { it.isNotEmpty() }?.let {
-                return it
-            }
-        }
-        return emptyList()
+        return metadataLoader.readLocalLyrics(song) ?: emptyList()
+    }
+
+    private fun persistSongLrcPath(songPath: String, lrcPath: String) {
+        val idx = playlist.indexOfFirst { it.path == songPath }
+        if (idx < 0) return
+        val updated = playlist[idx].copy(lrcPath = lrcPath)
+        playlist = playlist.toMutableList().apply { set(idx, updated) }
+        PlaybackStateHolder.updateSongLrcPath(songPath, lrcPath)
+        PlaylistCache.save(applicationContext, playlist)
     }
 
     private fun loadMetadataAsync(song: Song) {
@@ -297,9 +325,10 @@ class MusicPlaybackService : Service() {
             }
 
             if (loadLocalLyrics(song).isEmpty()) {
-                val lines = metadataLoader.loadLyrics(song) ?: return@launch
+                val result = metadataLoader.loadLyrics(song) ?: return@launch
                 if (playlist.getOrNull(currentIndex)?.path != song.path) return@launch
-                currentLines = lines
+                result.lrcPath?.let { persistSongLrcPath(song.path, it) }
+                currentLines = result.lines
                 withContext(Dispatchers.Main) {
                     val p = exoPlayer
                     PlaybackStateHolder.update(
@@ -330,7 +359,7 @@ class MusicPlaybackService : Service() {
 
     private fun playNext() {
         if (playlist.isEmpty()) return
-        acquireAudioFocus()
+        ensureExclusiveAudioFocus()
         val next = when (PlaybackStateHolder.playMode) {
             PlaybackMode.SHUFFLE -> {
                 if (shuffleQueue.isEmpty()) refillShuffleQueue()
@@ -370,9 +399,10 @@ class MusicPlaybackService : Service() {
             settings.setLyricSearchOverride(song.path, title, artist.ifBlank { song.artist })
         }
         metadataScope.launch {
-            val lines = metadataLoader.loadLyrics(song, forceOnline = true) ?: return@launch
+            val result = metadataLoader.loadLyrics(song, forceOnline = true) ?: return@launch
             if (playlist.getOrNull(currentIndex)?.path != song.path) return@launch
-            currentLines = lines
+            result.lrcPath?.let { persistSongLrcPath(song.path, it) }
+            currentLines = result.lines
             withContext(Dispatchers.Main) {
                 val p = exoPlayer
                 PlaybackStateHolder.update(
