@@ -1,10 +1,10 @@
 package com.car.mp3player.ui
 
+import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
-import android.text.TextPaint
 import com.car.mp3player.data.SettingsRepository
 import com.car.mp3player.model.LrcChar
 import com.car.mp3player.model.LrcLine
@@ -15,6 +15,12 @@ import kotlin.math.min
 object LyricRenderer {
 
     const val PLACEHOLDER_LINE = "-----------"
+
+    /** 网易云桌面歌词：未播放行半透明白 */
+    private const val OVERLAY_PENDING = 0x99FFFFFF.toInt()
+
+    /** 网易云桌面歌词：下一行略亮白 */
+    private const val OVERLAY_NEXT = 0xCCFFFFFF.toInt()
 
     data class Style(
         val highlightColor: Int,
@@ -31,7 +37,12 @@ object LyricRenderer {
         val outline: Boolean
     )
 
-    fun styleFrom(settings: SettingsRepository, density: Float, forPlayer: Boolean): Style {
+    fun styleFrom(
+        context: Context,
+        settings: SettingsRepository,
+        density: Float,
+        forPlayer: Boolean
+    ): Style {
         val overlaySize = settings.fontSizeSp
         val baseCurrent = if (forPlayer) settings.playerFontSizeSp else overlaySize
         val baseNext = if (forPlayer) settings.playerNextFontSizeSp else overlaySize * 0.88f
@@ -39,8 +50,8 @@ object LyricRenderer {
         val family = settings.lyricFontFamily()
         val bold = !forPlayer && settings.overlayLyricBold
         val highlight = if (forPlayer) settings.highlightColor else overlayHighlightColor(settings.highlightColor)
-        val pending = if (forPlayer) settings.pendingColor else overlayTintColor(highlight, 0.88f, 0.78f)
-        val next = if (forPlayer) settings.nextLineColor else overlayTintColor(highlight, 0.95f, 0.88f)
+        val pending = if (forPlayer) settings.pendingColor else OVERLAY_PENDING
+        val next = if (forPlayer) settings.nextLineColor else OVERLAY_NEXT
         return Style(
             highlightColor = highlight,
             pendingColor = pending,
@@ -48,23 +59,13 @@ object LyricRenderer {
             currentSizePx = baseCurrent * density * if (forPlayer) settings.currentLineScale else 1f,
             nextSizePx = baseNext * density * if (forPlayer) settings.nextLineScale else 1f,
             otherSizePx = baseOther * density,
-            typeface = typefaceFor(family, bold),
+            typeface = LyricFontProvider.getTypeface(context, family, bold),
             maxVisualLines = settings.maxLyricVisualLines,
             currentScale = settings.currentLineScale,
             nextScale = settings.nextLineScale,
             bold = bold,
             outline = false
         )
-    }
-
-    fun typefaceFor(family: LyricFontFamily, bold: Boolean = false): Typeface? {
-        val base = when (family) {
-            LyricFontFamily.DEFAULT -> Typeface.DEFAULT
-            LyricFontFamily.SANS -> Typeface.SANS_SERIF
-            LyricFontFamily.SERIF -> Typeface.SERIF
-            LyricFontFamily.ROUND -> Typeface.create("sans-serif-medium", Typeface.NORMAL)
-        }
-        return if (bold) Typeface.create(base, Typeface.BOLD) else base
     }
 
     fun wrapText(text: String, paint: Paint, maxWidth: Float, maxLines: Int): List<String> {
@@ -204,9 +205,9 @@ object LyricRenderer {
         width: Int,
         height: Int,
         style: Style,
-        sungPaint: TextPaint,
-        nextPaint: TextPaint,
-        pendingPaint: TextPaint
+        sungPaint: Paint,
+        nextPaint: Paint,
+        pendingPaint: Paint
     ) {
         sungPaint.typeface = style.typeface
         nextPaint.typeface = style.typeface
@@ -254,29 +255,16 @@ object LyricRenderer {
         canvas.drawText(text, x, y, paint)
     }
 
-    /** 悬浮歌词高亮色：提高饱和度与不透明度 */
+    /** 悬浮歌词：正在播放行用高饱和主题色（网易云红） */
     private fun overlayHighlightColor(color: Int): Int {
         val base = if (Color.alpha(color) == 0) Color.parseColor("#EC4141") else color
         val hsv = FloatArray(3)
         Color.colorToHSV(base, hsv)
         if (hsv[1] < 0.08f) {
-            return Color.argb(255, 255, 255, 255)
+            return Color.parseColor("#EC4141")
         }
-        hsv[1] = min(1f, hsv[1] * 1.45f)
-        hsv[2] = min(1f, hsv[2] * 1.08f)
+        hsv[1] = min(1f, hsv[1] * 1.2f)
+        hsv[2] = min(1f, hsv[2] * 1.05f)
         return Color.HSVToColor(255, hsv)
-    }
-
-    /** 悬浮歌词次要行：保持色相，略提亮，不透明度过关 */
-    private fun overlayTintColor(highlight: Int, valueScale: Float, alpha: Float): Int {
-        val hsv = FloatArray(3)
-        Color.colorToHSV(highlight, hsv)
-        if (hsv[1] < 0.08f) {
-            val gray = (220 * valueScale).toInt().coerceIn(160, 255)
-            return Color.argb((alpha * 255).toInt().coerceIn(180, 255), gray, gray, gray)
-        }
-        hsv[1] = min(1f, hsv[1] * 1.15f)
-        hsv[2] = min(1f, hsv[2] * valueScale)
-        return Color.HSVToColor((alpha * 255).toInt().coerceIn(180, 255), hsv)
     }
 }

@@ -75,7 +75,7 @@ class KaraokeLyricView @JvmOverloads constructor(
         super.onDraw(canvas)
         val state = lyricState ?: return
         val density = resources.displayMetrics.scaledDensity
-        val style = LyricRenderer.styleFrom(settings, density, forPlayer = false)
+        val style = LyricRenderer.styleFrom(context, settings, density, forPlayer = false)
         LyricRenderer.drawOverlayBlock(
             canvas,
             state.currentLine,

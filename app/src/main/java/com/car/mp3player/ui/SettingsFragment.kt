@@ -316,6 +316,10 @@ class SettingsFragment : Fragment() {
                 isChecked = family == current
                 setOnClickListener {
                     settings.setLyricFontFamily(family)
+                    LyricFontProvider.invalidate()
+                    LyricFontProvider.preload(requireContext(), family) {
+                        activity?.runOnUiThread { notifyLyricStyleChanged() }
+                    }
                     notifyLyricStyleChanged()
                 }
             }
