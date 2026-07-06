@@ -1,42 +1,44 @@
 package com.car.mp3player.data
 
-import com.car.mp3player.lrc.LrcParser
+import android.content.Context
 import com.car.mp3player.model.LrcLine
 import com.car.mp3player.model.Song
 import java.io.File
-import java.security.MessageDigest
 
 class SongMetadataLoader(
+    private val context: Context,
     private val cacheDir: File,
     private val settings: SettingsRepository,
     private val lyricFetcher: OnlineLyricFetcher = OnlineLyricFetcher(),
     private val coverFetcher: CoverArtFetcher
 ) {
-    fun loadLyrics(song: Song, forceOnline: Boolean = false): List<LrcLine>? {
+    fun loadLyrics(song: Song, forceOnline: Boolean = false): LyricLoadResult? {
         val title = settings.lyricSearchTitle(song.path) ?: song.title
         val artist = settings.lyricSearchArtist(song.path) ?: song.artist
 
         if (!forceOnline) {
-            song.lrcPath?.let { path ->
-                runCatching { LrcParser.parseFile(File(path)) }.getOrNull()?.takeIf { it.isNotEmpty() }?.let {
-                    return it
-                }
+            LyricFileStore.read(context, song)?.let { lines ->
+                val path = song.lrcPath ?: LyricFileStore.resolveSidecarPath(context, song)
+                return LyricLoadResult(lines, path)
             }
-            val cache = lyricsCacheFile(song)
-            if (cache.exists()) {
-                runCatching { LrcParser.parseFile(cache) }.getOrNull()?.takeIf { it.isNotEmpty() }?.let {
-                    return it
+            LyricFileStore.migrateLegacyCache(context, song, cacheDir)?.let { savedPath ->
+                LyricFileStore.read(context, song.copy(lrcPath = savedPath))?.let { lines ->
+                    return LyricLoadResult(lines, savedPath)
                 }
             }
         } else {
-            lyricsCacheFile(song).delete()
+            LyricFileStore.delete(context, song)
+            LyricFileStore.deleteLegacyCache(cacheDir, song)
         }
 
         if (!settings.onlineLyricsEnabled) return null
         val fetched = lyricFetcher.fetch(title, artist) ?: return null
-        runCatching { lyricsCacheFile(song).writeText(buildCacheLrc(fetched)) }
-        return fetched
+        val lrcText = buildLrcText(fetched)
+        val savedPath = LyricFileStore.save(context, song, lrcText)
+        return LyricLoadResult(fetched, savedPath)
     }
+
+    fun readLocalLyrics(song: Song): List<LrcLine>? = LyricFileStore.read(context, song)
 
     fun loadCover(song: Song): String? {
         val cache = coverCacheFile(song)
@@ -44,10 +46,9 @@ class SongMetadataLoader(
         return coverFetcher.fetch(song, cache, allowOnline = settings.onlineCoverEnabled)
     }
 
-    private fun buildCacheLrc(lines: List<LrcLine>): String {
+    private fun buildLrcText(lines: List<LrcLine>): String {
         return lines.joinToString("\n") { line ->
-            val tag = formatTime(line.startTimeMs)
-            "$tag${line.text}"
+            "${formatTime(line.startTimeMs)}${line.text}"
         }
     }
 
@@ -59,15 +60,15 @@ class SongMetadataLoader(
         return "[${min.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}.${centi.toString().padStart(2, '0')}]"
     }
 
-    private fun lyricsCacheFile(song: Song): File =
-        File(File(cacheDir, "lyrics"), "${songKey(song)}.lrc")
-
-    private fun coverCacheFile(song: Song): File =
-        File(File(cacheDir, "covers"), "${songKey(song)}.jpg")
-
-    private fun songKey(song: Song): String {
-        val digest = MessageDigest.getInstance("MD5")
+    private fun coverCacheFile(song: Song): File {
+        val digest = java.security.MessageDigest.getInstance("MD5")
         val bytes = digest.digest("${song.path}|${song.title}|${song.artist}".toByteArray())
-        return bytes.joinToString("") { "%02x".format(it) }
+        val key = bytes.joinToString("") { "%02x".format(it) }
+        return File(File(cacheDir, "covers"), "$key.jpg")
     }
+
+    data class LyricLoadResult(
+        val lines: List<LrcLine>,
+        val lrcPath: String?
+    )
 }

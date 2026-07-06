@@ -7,6 +7,7 @@ import androidx.core.content.edit
 import com.car.mp3player.model.AppThemePreset
 import com.car.mp3player.model.LyricFontFamily
 import com.car.mp3player.model.LyricThemePreset
+import com.car.mp3player.model.PlaybackMode
 import com.car.mp3player.model.ThemeMode
 
 class SettingsRepository(context: Context) {
@@ -84,6 +85,10 @@ class SettingsRepository(context: Context) {
     var startupSoundEnabled: Boolean
         get() = prefs.getBoolean(KEY_STARTUP_SOUND, true)
         set(value) = prefs.edit { putBoolean(KEY_STARTUP_SOUND, value) }
+
+    var playMode: PlaybackMode
+        get() = PlaybackMode.entries[prefs.getInt(KEY_PLAY_MODE, PlaybackMode.SHUFFLE.ordinal)]
+        set(value) = prefs.edit { putInt(KEY_PLAY_MODE, value.ordinal) }
 
     var clusterLyricsEnabled: Boolean
         get() = prefs.getBoolean(KEY_CLUSTER_LYRICS, false)
@@ -231,6 +236,7 @@ class SettingsRepository(context: Context) {
         const val KEY_BOOT_RETURN_HOME = "boot_return_home"
         const val KEY_OVERLAY_BOLD = "overlay_lyric_bold"
         const val KEY_STARTUP_SOUND = "startup_sound"
+        const val KEY_PLAY_MODE = "play_mode"
         const val KEY_CLUSTER_LYRICS = "cluster_lyrics"
         const val KEY_THEME = "theme_mode"
         const val KEY_APP_THEME = "app_theme"

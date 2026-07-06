@@ -121,13 +121,18 @@ class MusicScanner(
         val name = file.name ?: return
         if (!isAudioFile(name)) return
         val uri = file.uri.toString()
+        val id = nextId()
+        val title = name.substringBeforeLast('.')
         out.add(
             Song(
-                id = nextId(),
-                title = name.substringBeforeLast('.'),
+                id = id,
+                title = title,
                 artist = "本地音乐",
                 path = uri,
-                lrcPath = null,
+                lrcPath = LyricFileStore.resolveSidecarPath(
+                    context,
+                    Song(id, title, "本地音乐", uri, null)
+                ),
                 durationMs = readDurationMs(uri)
             )
         )
