@@ -61,6 +61,7 @@ class MusicPlaybackService : Service() {
     private val audioManager by lazy { getSystemService(AUDIO_SERVICE) as AudioManager }
     private var audioFocusRequest: AudioFocusRequest? = null
     private var hasAudioFocus = false
+    private var foregroundStarted = false
 
     private val audioFocusListener = AudioManager.OnAudioFocusChangeListener { focus ->
         val player = exoPlayer ?: return@OnAudioFocusChangeListener
@@ -133,20 +134,39 @@ class MusicPlaybackService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        ensureForeground()
         when (intent?.action) {
             ACTION_PLAY_INDEX -> {
                 val index = intent.getIntExtra(EXTRA_INDEX, 0)
                 val seek = intent.getLongExtra(EXTRA_SEEK, 0L)
-                val list = readPlaylist(intent)?.map { it.toSong() }
-                if (list != null) {
+                val list = resolvePlaylist(intent)
+                if (list.isNotEmpty()) {
                     startPlaylist(list, index, seek)
                 } else if (playlist.isNotEmpty()) {
                     playSongAt(index.coerceIn(0, playlist.lastIndex), seek)
                 }
             }
-            ACTION_TOGGLE -> togglePlayPause()
-            ACTION_NEXT -> playNext()
-            ACTION_PREV -> playPrevious()
+            ACTION_TOGGLE -> {
+                if (playlist.isEmpty()) {
+                    startFromCachedQueue(resume = true)
+                } else {
+                    togglePlayPause()
+                }
+            }
+            ACTION_NEXT -> {
+                if (playlist.isEmpty()) {
+                    startFromCachedQueue(playNext = true)
+                } else {
+                    playNext()
+                }
+            }
+            ACTION_PREV -> {
+                if (playlist.isEmpty()) {
+                    startFromCachedQueue(playPrevious = true)
+                } else {
+                    playPrevious()
+                }
+            }
             ACTION_SET_MODE -> {
                 val mode = PlaybackMode.entries[intent.getIntExtra(EXTRA_MODE, 0)]
                 setPlayMode(mode)
@@ -160,6 +180,56 @@ class MusicPlaybackService : Service() {
             ACTION_STOP -> stopSelf()
         }
         return START_STICKY
+    }
+
+    private fun resolvePlaylist(intent: Intent?): List<Song> {
+        readPlaylist(intent)?.map { it.toSong() }?.takeIf { it.isNotEmpty() }?.let { return it }
+        PlaylistCache.loadQueue(this).takeIf { it.isNotEmpty() }?.let { return it }
+        PlaylistCache.load(this).takeIf { it.isNotEmpty() }?.let { return it }
+        return PlaybackStateHolder.songs
+    }
+
+    private fun startFromCachedQueue(
+        resume: Boolean = false,
+        playNext: Boolean = false,
+        playPrevious: Boolean = false
+    ) {
+        val list = resolvePlaylist(null)
+        if (list.isEmpty()) return
+        if (playlist.isEmpty()) {
+            val path = settings.lastSongPath
+            val index = path?.let { p -> list.indexOfFirst { it.path == p } }?.takeIf { it >= 0 } ?: 0
+            val seek = if (resume) settings.lastPositionMs.coerceAtLeast(0L) else 0L
+            startPlaylist(list, index, seek)
+            if (playNext) playNext()
+            else if (playPrevious) playPrevious()
+            return
+        }
+        when {
+            playNext -> playNext()
+            playPrevious -> playPrevious()
+        }
+    }
+
+    private fun ensureForeground() {
+        if (foregroundStarted) return
+        runCatching {
+            startForeground(NOTIFICATION_ID, buildNotification(playlist.getOrNull(currentIndex)))
+            foregroundStarted = true
+        }.onFailure {
+            runCatching {
+                startForeground(
+                    NOTIFICATION_ID,
+                    NotificationCompat.Builder(this, CHANNEL_ID)
+                        .setContentTitle(getString(R.string.app_name))
+                        .setContentText(getString(R.string.now_playing))
+                        .setSmallIcon(android.R.drawable.ic_media_play)
+                        .setOngoing(true)
+                        .build()
+                )
+                foregroundStarted = true
+            }
+        }
     }
 
     private fun resumeLast() {
@@ -203,7 +273,8 @@ class MusicPlaybackService : Service() {
         lastClusterMetadataKey = ""
         PlaybackStateHolder.setCoverArt(null)
         currentLines = loadLocalLyrics(song)
-        startForeground(NOTIFICATION_ID, buildNotification(song))
+        ensureForeground()
+        updateNotification(song)
         handler.removeCallbacks(progressRunnable)
         handler.post(progressRunnable)
         persistProgress(song, seekMs)
@@ -494,7 +565,9 @@ class MusicPlaybackService : Service() {
             .setOngoing(true)
             .setOnlyAlertOnce(true)
         if (session != null) {
-            builder.setStyle(MediaStyleNotificationHelper.MediaStyle(session))
+            runCatching {
+                builder.setStyle(MediaStyleNotificationHelper.MediaStyle(session))
+            }
         }
         return builder.build()
     }

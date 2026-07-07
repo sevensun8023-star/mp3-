@@ -11,6 +11,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.car.mp3player.data.PlaybackBootstrap
+import com.car.mp3player.data.PlaylistCache
 import com.car.mp3player.data.SettingsRepository
 import com.car.mp3player.databinding.ActivityMainBinding
 import com.car.mp3player.model.Song
@@ -100,13 +101,11 @@ class MainActivity : AppCompatActivity(), MainHost {
 
     override fun playSongSubset(subset: List<Song>, index: Int) {
         if (subset.isEmpty() || index !in subset.indices) return
+        PlaylistCache.saveQueue(this, subset)
+        PlaybackStateHolder.setPlaylist(subset, index)
         val intent = Intent(this, MusicPlaybackService::class.java).apply {
             action = MusicPlaybackService.ACTION_PLAY_INDEX
             putExtra(MusicPlaybackService.EXTRA_INDEX, index)
-            putParcelableArrayListExtra(
-                MusicPlaybackService.EXTRA_PLAYLIST,
-                ArrayList(subset.map { SongParcelable.from(it) })
-            )
         }
         ContextCompat.startForegroundService(this, intent)
     }
