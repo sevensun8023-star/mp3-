@@ -62,9 +62,11 @@ class ClusterLyricService : Service(), PlaybackStateHolder.Listener {
         val display = findClusterDisplay() ?: return
         if (presentation != null && attachedDisplayId == display.displayId) return
         hidePresentation()
-        presentation = ClusterLyricPresentation(this, display).also {
-            it.show()
-            attachedDisplayId = display.displayId
+        runCatching {
+            presentation = ClusterLyricPresentation(this, display).also {
+                it.show()
+                attachedDisplayId = display.displayId
+            }
         }
     }
 

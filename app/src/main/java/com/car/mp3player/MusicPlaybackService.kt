@@ -107,13 +107,6 @@ class MusicPlaybackService : Service() {
                 override fun onPlaybackStateChanged(playbackState: Int) {
                     if (playbackState == Player.STATE_ENDED) playNext()
                 }
-
-                override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-                    val idx = currentMediaItemIndex
-                    if (idx in playlist.indices && idx != currentIndex) {
-                        applyTrackChange(idx)
-                    }
-                }
             })
         }
         exoPlayer = player
@@ -139,30 +132,40 @@ class MusicPlaybackService : Service() {
             ACTION_PLAY_INDEX -> {
                 val index = intent.getIntExtra(EXTRA_INDEX, 0)
                 val seek = intent.getLongExtra(EXTRA_SEEK, 0L)
-                val list = resolvePlaylist(intent)
-                if (list.isNotEmpty()) {
-                    startPlaylist(list, index, seek)
-                } else if (playlist.isNotEmpty()) {
-                    playSongAt(index.coerceIn(0, playlist.lastIndex), seek)
+                runWithPlaylist(intent) { list ->
+                    if (list.isNotEmpty()) {
+                        startPlaylist(list, index, seek)
+                    } else if (playlist.isNotEmpty()) {
+                        playSongAt(index.coerceIn(0, playlist.lastIndex), seek)
+                    }
                 }
             }
             ACTION_TOGGLE -> {
                 if (playlist.isEmpty()) {
-                    startFromCachedQueue(resume = true)
+                    runWithPlaylist(null) { list ->
+                        if (list.isEmpty()) return@runWithPlaylist
+                        startFromCachedQueue(list, resume = true)
+                    }
                 } else {
                     togglePlayPause()
                 }
             }
             ACTION_NEXT -> {
                 if (playlist.isEmpty()) {
-                    startFromCachedQueue(shouldPlayNext = true)
+                    runWithPlaylist(null) { list ->
+                        if (list.isEmpty()) return@runWithPlaylist
+                        startFromCachedQueue(list, shouldPlayNext = true)
+                    }
                 } else {
                     playNext()
                 }
             }
             ACTION_PREV -> {
                 if (playlist.isEmpty()) {
-                    startFromCachedQueue(shouldPlayPrevious = true)
+                    runWithPlaylist(null) { list ->
+                        if (list.isEmpty()) return@runWithPlaylist
+                        startFromCachedQueue(list, shouldPlayPrevious = true)
+                    }
                 } else {
                     playPrevious()
                 }
@@ -182,6 +185,13 @@ class MusicPlaybackService : Service() {
         return START_STICKY
     }
 
+    private fun runWithPlaylist(intent: Intent?, block: (List<Song>) -> Unit) {
+        metadataScope.launch {
+            val list = withContext(Dispatchers.IO) { resolvePlaylist(intent) }
+            withContext(Dispatchers.Main) { block(list) }
+        }
+    }
+
     private fun resolvePlaylist(intent: Intent?): List<Song> {
         intent?.let { readPlaylist(it) }?.map { it.toSong() }?.takeIf { it.isNotEmpty() }?.let { return it }
         PlaylistCache.loadQueue(this).takeIf { it.isNotEmpty() }?.let { return it }
@@ -190,11 +200,11 @@ class MusicPlaybackService : Service() {
     }
 
     private fun startFromCachedQueue(
+        list: List<Song>,
         resume: Boolean = false,
         shouldPlayNext: Boolean = false,
         shouldPlayPrevious: Boolean = false
     ) {
-        val list = resolvePlaylist(null)
         if (list.isEmpty()) return
         if (playlist.isEmpty()) {
             val path = settings.lastSongPath
@@ -262,12 +272,9 @@ class MusicPlaybackService : Service() {
         val song = playlist[index]
         val player = exoPlayer ?: return
 
-        if (isQueueSynced(player)) {
-            player.seekTo(index, seekMs)
-        } else {
-            player.setMediaItems(buildMediaItems(), index, seekMs)
-            player.prepare()
-        }
+        val item = buildMediaItem(song)
+        player.setMediaItem(item, seekMs)
+        player.prepare()
         player.play()
 
         lastClusterMetadataKey = ""
@@ -280,56 +287,23 @@ class MusicPlaybackService : Service() {
         persistProgress(song, seekMs)
         PlaybackStateHolder.update(song, true, seekMs, currentLines, player.duration.coerceAtLeast(0L))
         updateClusterMetadata(song, seekMs)
-        LyricsOverlayService.start(applicationContext)
+        runCatching { LyricsOverlayService.start(applicationContext) }
         LyricsOverlayService.updateLyrics(applicationContext, PlaybackStateHolder.lyricState)
-        ClusterLyricService.start(applicationContext)
+        runCatching { ClusterLyricService.start(applicationContext) }
         loadMetadataAsync(song)
     }
 
-    private fun applyTrackChange(index: Int) {
-        if (index !in playlist.indices) return
-        currentIndex = index
-        val song = playlist[index]
-        lastClusterMetadataKey = ""
-        PlaybackStateHolder.setCoverArt(null)
-        currentLines = loadLocalLyrics(song)
-        val player = exoPlayer
-        val pos = player?.currentPosition ?: 0L
-        persistProgress(song, pos)
-        PlaybackStateHolder.update(
-            song,
-            player?.isPlaying == true,
-            pos,
-            currentLines,
-            player?.duration?.coerceAtLeast(0L) ?: PlaybackStateHolder.durationMs
-        )
-        updateClusterMetadata(song, pos)
-        updateNotification(song)
-        LyricsOverlayService.updateLyrics(applicationContext, PlaybackStateHolder.lyricState)
-        loadMetadataAsync(song)
-    }
-
-    private fun buildMediaItems(): List<MediaItem> {
-        return playlist.map { song ->
-            MediaItem.Builder()
-                .setUri(songUri(song))
-                .setMediaId(song.path)
-                .setMediaMetadata(
-                    MediaMetadata.Builder()
-                        .setTitle(song.title)
-                        .setArtist(song.artist)
-                        .build()
-                )
-                .build()
-        }
-    }
-
-    private fun isQueueSynced(player: ExoPlayer): Boolean {
-        if (player.mediaItemCount != playlist.size || playlist.isEmpty()) return false
-        for (i in playlist.indices) {
-            if (player.getMediaItemAt(i).mediaId != playlist[i].path) return false
-        }
-        return true
+    private fun buildMediaItem(song: Song): MediaItem {
+        return MediaItem.Builder()
+            .setUri(songUri(song))
+            .setMediaId(song.path)
+            .setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setTitle(song.title)
+                    .setArtist(song.artist)
+                    .build()
+            )
+            .build()
     }
 
     private fun acquireAudioFocus() {
@@ -383,7 +357,7 @@ class MusicPlaybackService : Service() {
         val updated = playlist[idx].copy(lrcPath = lrcPath)
         playlist = playlist.toMutableList().apply { set(idx, updated) }
         PlaybackStateHolder.updateSongLrcPath(songPath, lrcPath)
-        PlaylistCache.save(applicationContext, playlist)
+        PlaylistCache.saveQueue(applicationContext, playlist)
     }
 
     private fun loadMetadataAsync(song: Song) {
@@ -504,11 +478,10 @@ class MusicPlaybackService : Service() {
             .setDescription(lyricLine ?: song.title)
             .build()
         val player = exoPlayer ?: return
-        val index = player.currentMediaItemIndex
-        if (index < 0) return
+        if (player.mediaItemCount <= 0) return
         val current = player.currentMediaItem ?: return
         player.replaceMediaItem(
-            index,
+            player.currentMediaItemIndex.coerceAtLeast(0),
             current.buildUpon().setMediaMetadata(metadata).build()
         )
         updateNotification(song, subtitle)
