@@ -71,7 +71,6 @@ class MainActivity : AppCompatActivity(), MainHost {
             if (!PlaybackStateHolder.isPlaying) {
                 StartupSoundPlayer.playBeforeBootPlayback(this@MainActivity, settings)
             }
-            restoreCachedPlaylist(resumePlayback = true)
         }
     }
 

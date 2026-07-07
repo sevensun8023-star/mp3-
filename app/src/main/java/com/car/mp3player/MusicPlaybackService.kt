@@ -20,30 +20,25 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.session.MediaSession
-import androidx.media3.session.MediaStyleNotificationHelper
 import com.car.mp3player.data.PlaylistCache
 import com.car.mp3player.data.SettingsRepository
 import com.car.mp3player.data.SongMetadataLoader
 import com.car.mp3player.lrc.LrcParser
 import com.car.mp3player.model.PlaybackMode
 import com.car.mp3player.model.Song
-import com.car.mp3player.playback.CarPlaylistPlayer
 import com.car.mp3player.playback.PlaybackStateHolder
 import java.io.File
 import kotlin.random.Random
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class MusicPlaybackService : Service() {
     private var exoPlayer: ExoPlayer? = null
-    private var sessionPlayer: CarPlaylistPlayer? = null
-    private var mediaSession: MediaSession? = null
     private val handler = Handler(Looper.getMainLooper())
     private val settings by lazy { SettingsRepository(this) }
     private var playlist: List<Song> = emptyList()
@@ -72,15 +67,17 @@ class MusicPlaybackService : Service() {
         when (focus) {
             AudioManager.AUDIOFOCUS_GAIN -> {
                 hasAudioFocus = true
-                if (!player.isPlaying && playlist.isNotEmpty()) player.play()
+                if (!player.isPlaying && playlist.isNotEmpty() && player.mediaItemCount > 0) {
+                    runCatching { player.play() }
+                }
             }
             AudioManager.AUDIOFOCUS_LOSS -> {
                 hasAudioFocus = false
-                player.pause()
+                runCatching { player.pause() }
             }
             AudioManager.AUDIOFOCUS_LOSS_TRANSIENT,
             AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
-                player.pause()
+                runCatching { player.pause() }
             }
         }
     }
@@ -90,7 +87,7 @@ class MusicPlaybackService : Service() {
             val p = exoPlayer ?: return
             val song = playlist.getOrNull(currentIndex)
             PlaybackStateHolder.update(song, p.isPlaying, p.currentPosition, currentLines, p.duration.coerceAtLeast(0L))
-            LyricsOverlayService.updateLyrics(applicationContext, PlaybackStateHolder.lyricState)
+            runCatching { LyricsOverlayService.updateLyrics(applicationContext, PlaybackStateHolder.lyricState) }
             updateClusterMetadata(song, p.currentPosition)
             if (++saveTick % 25 == 0) {
                 persistProgress(song, p.currentPosition)
@@ -104,39 +101,47 @@ class MusicPlaybackService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        createChannel()
-        PlaybackStateHolder.setPlayMode(settings.playMode)
-        val player = ExoPlayer.Builder(this).build().apply {
-            addListener(object : Player.Listener {
-                override fun onPlaybackStateChanged(playbackState: Int) {
-                    if (playbackState == Player.STATE_ENDED) playNext()
-                }
+        runCatching {
+            createChannel()
+            PlaybackStateHolder.setPlayMode(settings.playMode)
+            exoPlayer = ExoPlayer.Builder(this).build().apply {
+                addListener(object : Player.Listener {
+                    override fun onPlaybackStateChanged(playbackState: Int) {
+                        if (playbackState == Player.STATE_ENDED) playNext()
+                    }
 
-                override fun onPlayerError(error: PlaybackException) {
-                    android.util.Log.e(TAG, "ExoPlayer error", error)
-                }
-            })
+                    override fun onPlayerError(error: PlaybackException) {
+                        android.util.Log.e(TAG, "ExoPlayer error", error)
+                    }
+                })
+            }
+        }.onFailure {
+            android.util.Log.e(TAG, "onCreate failed", it)
         }
-        exoPlayer = player
-        sessionPlayer = CarPlaylistPlayer(
-            player = player,
-            onSkipNext = { playNext() },
-            onSkipPrevious = { playPrevious() },
-            hasPlaylist = { playlist.isNotEmpty() }
-        )
-        mediaSession = MediaSession.Builder(this, sessionPlayer!!)
-            .setSessionActivity(
-                PendingIntent.getActivity(
-                    this, 0, Intent(this, MainActivity::class.java),
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                )
-            )
-            .build()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        return runCatching { handleStartCommand(intent) }.onFailure {
+            android.util.Log.e(TAG, "onStartCommand failed", it)
+            stopSelfSafely()
+        }.getOrDefault(START_NOT_STICKY)
+    }
+
+    private fun handleStartCommand(intent: Intent?): Int {
+        val action = intent?.action
+        if (action == ACTION_STOP) {
+            stopSelfSafely()
+            return START_NOT_STICKY
+        }
+
+        if (!requiresForeground(action) && playlist.isEmpty() && PlaybackStateHolder.songs.isEmpty()) {
+            stopSelfSafely()
+            return START_NOT_STICKY
+        }
+
         ensureForeground()
-        when (intent?.action) {
+
+        when (action) {
             ACTION_PLAY_INDEX -> {
                 val index = intent.getIntExtra(EXTRA_INDEX, 0)
                 val seek = intent.getLongExtra(EXTRA_SEEK, 0L)
@@ -185,12 +190,18 @@ class MusicPlaybackService : Service() {
             ACTION_RESUME -> resumeLast()
             ACTION_SEEK -> {
                 val seek = intent.getLongExtra(EXTRA_SEEK, 0L)
-                exoPlayer?.seekTo(seek.coerceAtLeast(0L))
+                runCatching { exoPlayer?.seekTo(seek.coerceAtLeast(0L)) }
             }
             ACTION_RELOAD_LYRICS -> reloadLyrics(intent)
-            ACTION_STOP -> stopSelf()
         }
-        return START_STICKY
+        return if (playlist.isNotEmpty()) START_STICKY else START_NOT_STICKY
+    }
+
+    private fun requiresForeground(action: String?): Boolean {
+        return when (action) {
+            ACTION_SET_MODE, ACTION_STOP -> false
+            else -> true
+        }
     }
 
     private fun runWithPlaylist(intent: Intent?, block: (List<Song>) -> Unit) {
@@ -201,14 +212,12 @@ class MusicPlaybackService : Service() {
                 withContext(Dispatchers.Main) {
                     runCatching { block(list) }.onFailure {
                         android.util.Log.e(TAG, "playback action failed", it)
-                        ensureForeground()
                     }
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 android.util.Log.e(TAG, "resolvePlaylist failed", e)
-                withContext(Dispatchers.Main) { ensureForeground() }
             }
         }
     }
@@ -260,8 +269,25 @@ class MusicPlaybackService : Service() {
                         .build()
                 )
                 foregroundStarted = true
+            }.onFailure {
+                android.util.Log.e(TAG, "ensureForeground failed", it)
             }
         }
+    }
+
+    private fun stopSelfSafely() {
+        if (foregroundStarted) {
+            runCatching {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                } else {
+                    @Suppress("DEPRECATION")
+                    stopForeground(true)
+                }
+            }
+            foregroundStarted = false
+        }
+        stopSelf()
     }
 
     private fun resumeLast() {
@@ -293,10 +319,14 @@ class MusicPlaybackService : Service() {
 
     private fun playSongAt(index: Int, seekMs: Long = 0L) {
         if (index !in playlist.indices) return
+        val song = playlist[index]
+        if (!songFileReadable(song)) {
+            android.util.Log.e(TAG, "song not readable: ${song.path}")
+            return
+        }
         runCatching {
             acquireAudioFocus()
             currentIndex = index
-            val song = playlist[index]
             val player = exoPlayer ?: return@runCatching
 
             val item = buildMediaItem(song)
@@ -322,8 +352,12 @@ class MusicPlaybackService : Service() {
             loadMetadataAsync(song)
         }.onFailure {
             android.util.Log.e(TAG, "playSongAt failed", it)
-            ensureForeground()
         }
+    }
+
+    private fun songFileReadable(song: Song): Boolean {
+        if (song.path.startsWith("content://")) return true
+        return runCatching { File(song.path).isFile }.getOrDefault(false)
     }
 
     private fun buildMediaItem(song: Song): MediaItem {
@@ -424,41 +458,59 @@ class MusicPlaybackService : Service() {
     }
 
     private fun togglePlayPause() {
-        val p = exoPlayer ?: return
-        if (p.isPlaying) p.pause() else p.play()
-        val song = playlist.getOrNull(currentIndex)
-        updateNotification(song)
-        PlaybackStateHolder.update(song, p.isPlaying, p.currentPosition, currentLines, p.duration.coerceAtLeast(0L))
-        persistProgress(song, p.currentPosition)
+        runCatching {
+            val p = exoPlayer ?: return@runCatching
+            if (p.mediaItemCount <= 0) {
+                if (playlist.isNotEmpty()) {
+                    playSongAt(currentIndex.coerceIn(0, playlist.lastIndex))
+                }
+                return@runCatching
+            }
+            if (p.isPlaying) p.pause() else p.play()
+            val song = playlist.getOrNull(currentIndex)
+            updateNotification(song)
+            PlaybackStateHolder.update(song, p.isPlaying, p.currentPosition, currentLines, p.duration.coerceAtLeast(0L))
+            persistProgress(song, p.currentPosition)
+        }.onFailure {
+            android.util.Log.e(TAG, "togglePlayPause failed", it)
+        }
     }
 
     private fun playNext() {
-        if (playlist.isEmpty()) return
-        val next = when (PlaybackStateHolder.playMode) {
-            PlaybackMode.SHUFFLE -> {
-                if (shuffleQueue.isEmpty()) refillShuffleQueue()
-                shuffleQueue.removeFirstOrNull() ?: Random.nextInt(playlist.size)
+        runCatching {
+            if (playlist.isEmpty()) return@runCatching
+            val next = when (PlaybackStateHolder.playMode) {
+                PlaybackMode.SHUFFLE -> {
+                    if (shuffleQueue.isEmpty()) refillShuffleQueue()
+                    shuffleQueue.removeFirstOrNull() ?: Random.nextInt(playlist.size)
+                }
+                PlaybackMode.ORDER -> if (currentIndex + 1 < playlist.size) currentIndex + 1 else 0
             }
-            PlaybackMode.ORDER -> if (currentIndex + 1 < playlist.size) currentIndex + 1 else 0
+            playSongAt(next)
+        }.onFailure {
+            android.util.Log.e(TAG, "playNext failed", it)
         }
-        playSongAt(next)
     }
 
     private fun playPrevious() {
-        if (playlist.isEmpty()) return
-        val p = exoPlayer ?: return
-        if (p.currentPosition > 3000) {
-            p.seekTo(0)
-            return
-        }
-        val prev = when (PlaybackStateHolder.playMode) {
-            PlaybackMode.SHUFFLE -> {
-                if (shuffleQueue.isEmpty()) refillShuffleQueue()
-                shuffleQueue.removeLastOrNull() ?: Random.nextInt(playlist.size)
+        runCatching {
+            if (playlist.isEmpty()) return@runCatching
+            val p = exoPlayer ?: return@runCatching
+            if (p.mediaItemCount > 0 && p.currentPosition > 3000) {
+                p.seekTo(0)
+                return@runCatching
             }
-            PlaybackMode.ORDER -> if (currentIndex - 1 >= 0) currentIndex - 1 else playlist.lastIndex
+            val prev = when (PlaybackStateHolder.playMode) {
+                PlaybackMode.SHUFFLE -> {
+                    if (shuffleQueue.isEmpty()) refillShuffleQueue()
+                    shuffleQueue.removeLastOrNull() ?: Random.nextInt(playlist.size)
+                }
+                PlaybackMode.ORDER -> if (currentIndex - 1 >= 0) currentIndex - 1 else playlist.lastIndex
+            }
+            playSongAt(prev)
+        }.onFailure {
+            android.util.Log.e(TAG, "playPrevious failed", it)
         }
-        playSongAt(prev)
     }
 
     private fun refillShuffleQueue() {
@@ -527,11 +579,9 @@ class MusicPlaybackService : Service() {
     override fun onDestroy() {
         handler.removeCallbacks(progressRunnable)
         releaseAudioFocus()
-        mediaSession?.release()
-        mediaSession = null
-        sessionPlayer = null
-        exoPlayer?.release()
+        runCatching { exoPlayer?.release() }
         exoPlayer = null
+        foregroundStarted = false
         super.onDestroy()
     }
 
@@ -552,7 +602,6 @@ class MusicPlaybackService : Service() {
     }
 
     private fun buildNotification(song: Song?, subtitle: String? = null): Notification {
-        val session = mediaSession
         val title = song?.title ?: getString(R.string.app_name)
         val line = subtitle?.takeIf { it.isNotBlank() }
         val text = line ?: song?.artist?.takeIf { it.isNotBlank() } ?: getString(R.string.now_playing)
@@ -560,7 +609,7 @@ class MusicPlaybackService : Service() {
             this, 0, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
+        return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(title)
             .setContentText(text)
             .setSmallIcon(R.drawable.ic_play)
@@ -568,16 +617,14 @@ class MusicPlaybackService : Service() {
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
-        if (session != null) {
-            runCatching {
-                builder.setStyle(MediaStyleNotificationHelper.MediaStyle(session))
-            }
-        }
-        return builder.build()
+            .build()
     }
 
     private fun updateNotification(song: Song?, subtitle: String? = null) {
-        getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, buildNotification(song, subtitle))
+        if (!foregroundStarted) return
+        runCatching {
+            getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, buildNotification(song, subtitle))
+        }
     }
 
     companion object {

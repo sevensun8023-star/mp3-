@@ -197,10 +197,18 @@ class PlayerFragment : Fragment(), PlaybackStateHolder.Listener {
     }
 
     private fun sendAction(action: String) {
-        ContextCompat.startForegroundService(
-            requireContext(),
-            Intent(requireContext(), MusicPlaybackService::class.java).apply { this.action = action }
-        )
+        if (PlaybackStateHolder.songs.isEmpty()) {
+            Toast.makeText(requireContext(), R.string.no_songs, Toast.LENGTH_SHORT).show()
+            return
+        }
+        runCatching {
+            ContextCompat.startForegroundService(
+                requireContext(),
+                Intent(requireContext(), MusicPlaybackService::class.java).apply { this.action = action }
+            )
+        }.onFailure {
+            Toast.makeText(requireContext(), R.string.playback_start_failed, Toast.LENGTH_SHORT).show()
+        }
     }
 
     fun refreshLyricStyle() {

@@ -6,7 +6,6 @@ import android.content.Intent
 import android.os.Build
 import android.view.KeyEvent
 import androidx.core.content.ContextCompat
-import com.car.mp3player.data.SettingsRepository
 import com.car.mp3player.playback.PlaybackStateHolder
 
 /**
@@ -47,6 +46,7 @@ class CarMediaButtonReceiver : BroadcastReceiver() {
 
     private fun shouldHandle(context: Context): Boolean {
         if (PlaybackStateHolder.isPlaying) return true
-        return SettingsRepository(context).lastSongPath != null
+        if (PlaybackStateHolder.songs.isNotEmpty()) return true
+        return false
     }
 }
