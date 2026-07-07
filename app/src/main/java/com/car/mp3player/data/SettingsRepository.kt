@@ -86,6 +86,11 @@ class SettingsRepository(context: Context) {
         get() = prefs.getBoolean(KEY_OVERLAY_STROKE, true)
         set(value) = prefs.edit { putBoolean(KEY_OVERLAY_STROKE, value) }
 
+    /** 描边粗细 1（最细）~ 10（最粗），默认 3 */
+    var overlayStrokeWidth: Int
+        get() = prefs.getInt(KEY_OVERLAY_STROKE_WIDTH, 3).coerceIn(1, 10)
+        set(value) = prefs.edit { putInt(KEY_OVERLAY_STROKE_WIDTH, value.coerceIn(1, 10)) }
+
     var startupSoundEnabled: Boolean
         get() = prefs.getBoolean(KEY_STARTUP_SOUND, true)
         set(value) = prefs.edit { putBoolean(KEY_STARTUP_SOUND, value) }
@@ -240,6 +245,7 @@ class SettingsRepository(context: Context) {
         const val KEY_BOOT_RETURN_HOME = "boot_return_home"
         const val KEY_OVERLAY_BOLD = "overlay_lyric_bold"
         const val KEY_OVERLAY_STROKE = "overlay_stroke_enabled"
+        const val KEY_OVERLAY_STROKE_WIDTH = "overlay_stroke_width"
         const val KEY_STARTUP_SOUND = "startup_sound"
         const val KEY_PLAY_MODE = "play_mode"
         const val KEY_CLUSTER_LYRICS = "cluster_lyrics"

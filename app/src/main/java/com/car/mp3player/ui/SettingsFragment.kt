@@ -26,6 +26,7 @@ import com.car.mp3player.model.LyricThemePreset
 import com.car.mp3player.model.ThemeMode
 import com.google.android.material.chip.Chip
 import com.google.android.material.chip.ChipGroup
+import com.google.android.material.slider.Slider
 import com.google.android.material.switchmaterial.SwitchMaterial
 
 class SettingsFragment : Fragment() {
@@ -38,6 +39,7 @@ class SettingsFragment : Fragment() {
     private var switchStartupSound: SwitchMaterial? = null
     private var switchOverlayBold: SwitchMaterial? = null
     private var switchOverlayStroke: SwitchMaterial? = null
+    private var overlayStrokeWidthSlider: Slider? = null
 
     private val overlayPermission = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -229,6 +231,8 @@ class SettingsFragment : Fragment() {
         val parent = binding.fontSizeSlider.parent as? LinearLayout ?: return
         switchOverlayBold?.let { parent.removeView(it) }
         switchOverlayStroke?.let { parent.removeView(it) }
+        overlayStrokeWidthSlider?.let { parent.removeView(it) }
+        parent.children.toList().filter { it.tag == "overlay_stroke_width_label" }.forEach { parent.removeView(it) }
         val boldSwitch = SwitchMaterial(requireContext()).apply {
             text = getString(R.string.overlay_lyric_bold)
             isChecked = settings.overlayLyricBold
@@ -252,6 +256,34 @@ class SettingsFragment : Fragment() {
         }
         parent.addView(strokeSwitch, insertAt + 1)
         switchOverlayStroke = strokeSwitch
+        val strokeWidthLabel = TextView(requireContext()).apply {
+            tag = "overlay_stroke_width_label"
+            text = getString(R.string.overlay_stroke_width)
+            setTextColor(ContextCompat.getColor(requireContext(), R.color.text_primary))
+            textSize = 14f
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = (8 * resources.displayMetrics.density).toInt() }
+        }
+        parent.addView(strokeWidthLabel, insertAt + 2)
+        val strokeWidthSlider = Slider(requireContext()).apply {
+            valueFrom = 1f
+            valueTo = 10f
+            stepSize = 1f
+            value = settings.overlayStrokeWidth.toFloat()
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            addOnChangeListener { _, value, _ ->
+                settings.overlayStrokeWidth = value.toInt()
+                notifyLyricStyleChanged()
+                LyricsOverlayService.refresh(requireContext())
+            }
+        }
+        parent.addView(strokeWidthSlider, insertAt + 3)
+        overlayStrokeWidthSlider = strokeWidthSlider
     }
 
     private fun setupAppThemeChips() {

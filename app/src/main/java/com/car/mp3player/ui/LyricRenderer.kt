@@ -18,21 +18,21 @@ object LyricRenderer {
 
     const val PLACEHOLDER_LINE = "-----------"
 
-    /** 悬浮歌词：待唱用主题色淡染（避免纯白在浅色背景看不见） */
-    private fun overlayPendingColor(highlight: Int): Int {
+    /** 悬浮歌词：待唱行用低饱和灰（带一点主题色相，避免全部变成深粉） */
+    private fun overlayPendingColor(themeHighlight: Int): Int {
         val hsv = FloatArray(3)
-        Color.colorToHSV(overlayHighlightColor(highlight), hsv)
-        hsv[1] = (hsv[1] * 0.55f).coerceIn(0.18f, 0.65f)
-        hsv[2] = (hsv[2] * 0.72f).coerceIn(0.42f, 0.78f)
+        Color.colorToHSV(themeHighlight, hsv)
+        hsv[1] = (hsv[1] * 0.10f).coerceIn(0f, 0.14f)
+        hsv[2] = 0.70f
         return Color.HSVToColor(0xD8, hsv)
     }
 
-    /** 悬浮歌词：下一行略亮，仍带主题色调 */
-    private fun overlayNextColor(highlight: Int): Int {
+    /** 悬浮歌词：下一行略亮，仍保持灰调 */
+    private fun overlayNextColor(themeHighlight: Int): Int {
         val hsv = FloatArray(3)
-        Color.colorToHSV(overlayHighlightColor(highlight), hsv)
-        hsv[1] = (hsv[1] * 0.7f).coerceIn(0.22f, 0.75f)
-        hsv[2] = (hsv[2] * 0.88f).coerceIn(0.55f, 0.92f)
+        Color.colorToHSV(themeHighlight, hsv)
+        hsv[1] = (hsv[1] * 0.14f).coerceIn(0f, 0.18f)
+        hsv[2] = 0.80f
         return Color.HSVToColor(0xEE, hsv)
     }
 
@@ -57,7 +57,8 @@ object LyricRenderer {
         val currentScale: Float,
         val nextScale: Float,
         val bold: Boolean,
-        val outline: Boolean
+        val outline: Boolean,
+        val strokeWidthPx: Float
     )
 
     fun styleFrom(
@@ -72,18 +73,20 @@ object LyricRenderer {
         val baseOther = if (forPlayer) settings.playerFontSizeSp * 0.82f else overlaySize * 0.85f
         val family = settings.lyricFontFamily()
         val bold = !forPlayer && settings.overlayLyricBold
-        val highlight = if (forPlayer) settings.highlightColor else overlayHighlightColor(settings.highlightColor)
-        val pending = if (forPlayer) settings.pendingColor else overlayPendingColor(settings.pendingColor)
-        val next = if (forPlayer) settings.nextLineColor else overlayNextColor(settings.nextLineColor)
+        val themeHighlight = settings.highlightColor
+        val highlight = if (forPlayer) themeHighlight else overlayHighlightColor(themeHighlight)
+        val pending = if (forPlayer) settings.pendingColor else overlayPendingColor(themeHighlight)
+        val next = if (forPlayer) settings.nextLineColor else overlayNextColor(themeHighlight)
         val overlayPlayedTop = adjustForGradient(highlight, lift = 0.35f)
         val overlayPlayedBottom = adjustForGradient(highlight, lift = -0.05f)
-        val overlayPlayedStroke = adjustForStroke(highlight)
+        val overlayPlayedStroke = adjustForStroke(highlight, played = true)
         val overlayPendingTop = adjustForGradient(pending, lift = 0.28f)
         val overlayPendingBottom = adjustForGradient(pending, lift = -0.08f)
-        val overlayPendingStroke = adjustForStroke(pending)
+        val overlayPendingStroke = overlayNeutralStrokeColor(themeHighlight)
         val overlayNextTop = adjustForGradient(next, lift = 0.24f)
         val overlayNextBottom = adjustForGradient(next, lift = -0.06f)
-        val overlayNextStroke = adjustForStroke(next)
+        val overlayNextStroke = overlayNeutralStrokeColor(themeHighlight, lighter = true)
+        val strokeWidthPx = if (forPlayer) 0f else overlayStrokeWidthPx(settings.overlayStrokeWidth)
         return Style(
             highlightColor = highlight,
             pendingColor = pending,
@@ -105,7 +108,8 @@ object LyricRenderer {
             currentScale = settings.currentLineScale,
             nextScale = settings.nextLineScale,
             bold = bold,
-            outline = !forPlayer && settings.overlayStrokeEnabled
+            outline = !forPlayer && settings.overlayStrokeEnabled,
+            strokeWidthPx = strokeWidthPx
         )
     }
 
@@ -335,7 +339,7 @@ object LyricRenderer {
             return
         }
         val fillColor = paint.color
-        val strokeWidth = (paint.textSize * 0.08f).coerceIn(2.5f, 7f)
+        val strokeWidth = strokeWidthFor(paint.textSize, style.strokeWidthPx)
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = strokeWidth
         paint.strokeJoin = Paint.Join.ROUND
@@ -366,7 +370,7 @@ object LyricRenderer {
             topColor, bottomColor, Shader.TileMode.CLAMP
         )
         if (style.outline) {
-            val strokeWidth = (paint.textSize * 0.085f).coerceIn(2.5f, 7f)
+            val strokeWidth = strokeWidthFor(paint.textSize, style.strokeWidthPx)
             paint.style = Paint.Style.STROKE
             paint.strokeWidth = strokeWidth
             paint.strokeJoin = Paint.Join.ROUND
@@ -400,11 +404,31 @@ object LyricRenderer {
         return Color.HSVToColor(230, hsv)
     }
 
-    private fun adjustForStroke(color: Int): Int {
+    private fun adjustForStroke(color: Int, played: Boolean): Int {
         val hsv = FloatArray(3)
         Color.colorToHSV(color, hsv)
-        hsv[2] = (hsv[2] * 0.45f).coerceAtLeast(0.18f)
+        hsv[2] = (hsv[2] * if (played) 0.45f else 0.30f).coerceAtLeast(0.18f)
         hsv[1] = (hsv[1] * 0.9f).coerceIn(0.1f, 1f)
         return Color.HSVToColor(245, hsv)
+    }
+
+    /** 待唱/下一行用中性深灰描边，避免粉色描边糊字 */
+    private fun overlayNeutralStrokeColor(themeHighlight: Int, lighter: Boolean = false): Int {
+        val hsv = FloatArray(3)
+        Color.colorToHSV(themeHighlight, hsv)
+        hsv[1] = (hsv[1] * 0.06f).coerceIn(0f, 0.10f)
+        hsv[2] = if (lighter) 0.32f else 0.24f
+        return Color.HSVToColor(245, hsv)
+    }
+
+    /** 1=最细 … 10=最粗，默认 3 约等于字号的 3% */
+    private fun overlayStrokeWidthPx(level: Int): Float {
+        val ratio = 0.012f + (level - 1) * 0.007f
+        return ratio
+    }
+
+    private fun strokeWidthFor(textSizePx: Float, ratio: Float): Float {
+        if (ratio <= 0f) return (textSizePx * 0.03f).coerceIn(1f, 4f)
+        return (textSizePx * ratio).coerceIn(1f, 5f)
     }
 }
