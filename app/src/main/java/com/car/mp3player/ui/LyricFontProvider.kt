@@ -64,6 +64,9 @@ object LyricFontProvider {
             LyricFontFamily.QINGKE -> "sans-serif-black"
             LyricFontFamily.MASHAN -> "serif"
             LyricFontFamily.SERIF -> "serif"
+            LyricFontFamily.MONO -> "monospace"
+            LyricFontFamily.CONDENSED -> "sans-serif-condensed"
+            LyricFontFamily.ROUNDED -> "sans-serif-medium"
         }
         return Typeface.create(name, Typeface.NORMAL)
     }

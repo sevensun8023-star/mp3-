@@ -65,7 +65,10 @@ enum class LyricFontFamily(
     NOTO_SANS("noto_sans", "思源黑体", R.font.lyric_noto_sans_sc),
     QINGKE("qingke", "站酷快乐", R.font.lyric_zcool_qingke),
     MASHAN("mashan", "马善政楷", R.font.lyric_ma_shan_zheng),
-    SERIF("serif", "思源宋体", R.font.lyric_noto_serif_sc);
+    SERIF("serif", "思源宋体", R.font.lyric_noto_serif_sc),
+    MONO("mono", "等宽"),
+    CONDENSED("condensed", "窄体"),
+    ROUNDED("rounded", "圆体");
 
     companion object {
         fun fromId(id: String): LyricFontFamily = when (id) {

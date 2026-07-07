@@ -21,6 +21,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
+import androidx.media3.session.MediaStyleNotificationHelper
 import com.car.mp3player.data.PlaylistCache
 import com.car.mp3player.data.SettingsRepository
 import com.car.mp3player.data.SongMetadataLoader
@@ -654,7 +655,7 @@ class MusicPlaybackService : Service() {
             this, 0, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        return NotificationCompat.Builder(this, CHANNEL_ID)
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(title)
             .setContentText(text)
             .setSmallIcon(R.drawable.ic_play)
@@ -662,7 +663,10 @@ class MusicPlaybackService : Service() {
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
-            .build()
+        mediaSession?.let { session ->
+            runCatching { builder.setStyle(MediaStyleNotificationHelper.MediaStyle(session)) }
+        }
+        return builder.build()
     }
 
     private fun updateNotification(song: Song?, subtitle: String? = null) {

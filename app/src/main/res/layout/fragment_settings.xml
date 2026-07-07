@@ -307,7 +307,7 @@
                     android:layout_height="wrap_content"
                     android:stepSize="1"
                     android:valueFrom="14"
-                    android:valueTo="32" />
+                    android:valueTo="56" />
 
                 <TextView
                     android:layout_width="match_parent"
@@ -321,7 +321,7 @@
                     android:layout_height="wrap_content"
                     android:stepSize="1"
                     android:valueFrom="12"
-                    android:valueTo="28" />
+                    android:valueTo="48" />
 
                 <TextView
                     android:layout_width="match_parent"
@@ -335,7 +335,7 @@
                     android:layout_height="wrap_content"
                     android:stepSize="1"
                     android:valueFrom="14"
-                    android:valueTo="36" />
+                    android:valueTo="60" />
 
                 <TextView
                     android:layout_width="match_parent"

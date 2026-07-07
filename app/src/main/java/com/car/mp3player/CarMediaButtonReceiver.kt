@@ -24,24 +24,30 @@ class CarMediaButtonReceiver : BroadcastReceiver() {
             intent.getParcelableExtra(Intent.EXTRA_KEY_EVENT)
         } ?: return
 
-        if (keyEvent.action == KeyEvent.ACTION_DOWN) {
-            val action = when (keyEvent.keyCode) {
+        val action = when (keyEvent.keyCode) {
                 KeyEvent.KEYCODE_MEDIA_NEXT -> MusicPlaybackService.ACTION_NEXT
                 KeyEvent.KEYCODE_MEDIA_PREVIOUS -> MusicPlaybackService.ACTION_PREV
                 KeyEvent.KEYCODE_MEDIA_PLAY,
                 KeyEvent.KEYCODE_MEDIA_PAUSE,
                 KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
-                KeyEvent.KEYCODE_HEADSETHOOK -> MusicPlaybackService.ACTION_TOGGLE
+                KeyEvent.KEYCODE_HEADSETHOOK,
+                KeyEvent.KEYCODE_MEDIA_STOP -> MusicPlaybackService.ACTION_TOGGLE
                 else -> null
             }
-            if (action != null) {
+        if (keyEvent.action == KeyEvent.ACTION_DOWN && action != null) {
                 runCatching {
                     ContextCompat.startForegroundService(
                         context,
                         Intent(context, MusicPlaybackService::class.java).apply { this.action = action }
                     )
+                }.onFailure {
+                    // Some head units deny background FGS starts. Fall back to startService.
+                    runCatching {
+                        context.startService(
+                            Intent(context, MusicPlaybackService::class.java).apply { this.action = action }
+                        )
+                    }
                 }
-            }
         }
         if (isOrderedBroadcast) {
             abortBroadcast()
@@ -49,8 +55,9 @@ class CarMediaButtonReceiver : BroadcastReceiver() {
     }
 
     private fun shouldHandle(context: Context): Boolean {
-        if (PlaybackStateHolder.isPlaying) return true
-        if (PlaybackStateHolder.songs.isNotEmpty()) return true
-        return SettingsRepository(context).lastSongPath != null
+        // Always claim keys first; service will no-op when no playable queue.
+        return PlaybackStateHolder.isPlaying ||
+            PlaybackStateHolder.songs.isNotEmpty() ||
+            SettingsRepository(context).lastSongPath != null
     }
 }

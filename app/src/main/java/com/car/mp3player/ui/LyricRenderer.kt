@@ -3,7 +3,9 @@ package com.car.mp3player.ui
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.LinearGradient
 import android.graphics.Paint
+import android.graphics.Shader
 import android.graphics.Typeface
 import com.car.mp3player.data.SettingsRepository
 import com.car.mp3player.model.LrcChar
@@ -38,6 +40,15 @@ object LyricRenderer {
         val highlightColor: Int,
         val pendingColor: Int,
         val nextLineColor: Int,
+        val overlayPlayedTopColor: Int,
+        val overlayPlayedBottomColor: Int,
+        val overlayPlayedStrokeColor: Int,
+        val overlayPendingTopColor: Int,
+        val overlayPendingBottomColor: Int,
+        val overlayPendingStrokeColor: Int,
+        val overlayNextTopColor: Int,
+        val overlayNextBottomColor: Int,
+        val overlayNextStrokeColor: Int,
         val currentSizePx: Float,
         val nextSizePx: Float,
         val otherSizePx: Float,
@@ -68,6 +79,15 @@ object LyricRenderer {
             highlightColor = highlight,
             pendingColor = pending,
             nextLineColor = next,
+            overlayPlayedTopColor = Color.parseColor("#FFF7D7DE"),
+            overlayPlayedBottomColor = Color.parseColor("#FFE95B77"),
+            overlayPlayedStrokeColor = Color.parseColor("#FF8F2A3E"),
+            overlayPendingTopColor = Color.parseColor("#FFF1F1F3"),
+            overlayPendingBottomColor = Color.parseColor("#FFBCBCC3"),
+            overlayPendingStrokeColor = Color.parseColor("#FF55555F"),
+            overlayNextTopColor = Color.parseColor("#FFEDEEF3"),
+            overlayNextBottomColor = Color.parseColor("#FFC9CAD2"),
+            overlayNextStrokeColor = Color.parseColor("#FF5F606B"),
             currentSizePx = baseCurrent * density * if (forPlayer) settings.currentLineScale else 1f,
             nextSizePx = baseNext * density * if (forPlayer) settings.nextLineScale else 1f,
             otherSizePx = baseOther * density,
@@ -174,7 +194,35 @@ object LyricRenderer {
                 paint.color = if (charGlobalIndex <= sungIndex) style.highlightColor else style.pendingColor
                 val size = if (charGlobalIndex == sungIndex) style.currentSizePx * 1.04f else style.currentSizePx
                 paint.textSize = size
-                drawText(canvas, ch.char, x, topY, paint, style)
+                if (style.outline) {
+                    if (charGlobalIndex <= sungIndex) {
+                        drawGradientText(
+                            canvas = canvas,
+                            text = ch.char,
+                            x = x,
+                            baselineY = topY,
+                            paint = paint,
+                            style = style,
+                            topColor = style.overlayPlayedTopColor,
+                            bottomColor = style.overlayPlayedBottomColor,
+                            strokeColor = style.overlayPlayedStrokeColor
+                        )
+                    } else {
+                        drawGradientText(
+                            canvas = canvas,
+                            text = ch.char,
+                            x = x,
+                            baselineY = topY,
+                            paint = paint,
+                            style = style,
+                            topColor = style.overlayPendingTopColor,
+                            bottomColor = style.overlayPendingBottomColor,
+                            strokeColor = style.overlayPendingStrokeColor
+                        )
+                    }
+                } else {
+                    drawText(canvas, ch.char, x, topY, paint, style)
+                }
                 x += paint.measureText(ch.char)
                 charGlobalIndex++
             }
@@ -204,7 +252,29 @@ object LyricRenderer {
         val pad = padding(style) / 2f
         for (line in lines) {
             val w = paint.measureText(line)
-            drawText(canvas, line, max(pad, (maxWidth - w) / 2f), y, paint, style)
+            val lineX = max(pad, (maxWidth - w) / 2f)
+            if (style.outline) {
+                val isPlayedLike = color == style.highlightColor
+                val isNextLike = color == style.nextLineColor
+                val top = when {
+                    isPlayedLike -> style.overlayPlayedTopColor
+                    isNextLike -> style.overlayNextTopColor
+                    else -> style.overlayPendingTopColor
+                }
+                val bottom = when {
+                    isPlayedLike -> style.overlayPlayedBottomColor
+                    isNextLike -> style.overlayNextBottomColor
+                    else -> style.overlayPendingBottomColor
+                }
+                val stroke = when {
+                    isPlayedLike -> style.overlayPlayedStrokeColor
+                    isNextLike -> style.overlayNextStrokeColor
+                    else -> style.overlayPendingStrokeColor
+                }
+                drawGradientText(canvas, line, lineX, y, paint, style, top, bottom, stroke)
+            } else {
+                drawText(canvas, line, lineX, y, paint, style)
+            }
             y += lineHeight
         }
     }
@@ -265,6 +335,39 @@ object LyricRenderer {
         paint.style = Paint.Style.FILL
         paint.color = fillColor
         canvas.drawText(text, x, y, paint)
+    }
+
+    private fun drawGradientText(
+        canvas: Canvas,
+        text: String,
+        x: Float,
+        baselineY: Float,
+        paint: Paint,
+        style: Style,
+        topColor: Int,
+        bottomColor: Int,
+        strokeColor: Int
+    ) {
+        val fillColor = paint.color
+        val prevShader = paint.shader
+        val textTop = baselineY - paint.textSize
+        val textBottom = baselineY + paint.textSize * 0.1f
+        paint.shader = LinearGradient(
+            x, textTop, x, textBottom,
+            topColor, bottomColor, Shader.TileMode.CLAMP
+        )
+        if (style.outline) {
+            val strokeWidth = (paint.textSize * 0.085f).coerceIn(2.5f, 7f)
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = strokeWidth
+            paint.strokeJoin = Paint.Join.ROUND
+            paint.color = strokeColor
+            canvas.drawText(text, x, baselineY, paint)
+            paint.style = Paint.Style.FILL
+        }
+        canvas.drawText(text, x, baselineY, paint)
+        paint.shader = prevShader
+        paint.color = fillColor
     }
 
     /** 悬浮歌词：正在播放行用高饱和主题色（网易云红） */
