@@ -372,7 +372,6 @@ class MusicPlaybackService : Service() {
     private fun claimMediaControl() {
         acquireAudioFocus()
         ensureMediaSession()
-        mediaSession?.let { runCatching { it.isActive = true } }
     }
 
     private fun ensureMediaSession() {
@@ -400,7 +399,6 @@ class MusicPlaybackService : Service() {
     }
 
     private fun releaseMediaSession() {
-        runCatching { mediaSession?.isActive = false }
         runCatching { mediaSession?.release() }
         mediaSession = null
         sessionPlayer = null
