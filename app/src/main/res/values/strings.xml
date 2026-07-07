@@ -49,6 +49,7 @@
     <string name="overlay_font_size">悬浮歌词字号</string>
     <string name="overlay_lyric_bold">悬浮歌词加粗</string>
     <string name="overlay_lyric_stroke">悬浮歌词描边</string>
+    <string name="overlay_stroke_width">描边粗细</string>
     <string name="tap_toggle_lyrics">点击切换歌词</string>
     <string name="current_line_scale">当前行放大比例</string>
     <string name="next_line_scale">下一行缩小比例</string>
