@@ -101,13 +101,23 @@ class MainActivity : AppCompatActivity(), MainHost {
 
     override fun playSongSubset(subset: List<Song>, index: Int) {
         if (subset.isEmpty() || index !in subset.indices) return
-        PlaylistCache.saveQueue(this, subset)
-        PlaybackStateHolder.setPlaylist(subset, index)
+        if (PlaybackStateHolder.songs === subset) {
+            PlaybackStateHolder.setCurrentIndex(index)
+        } else {
+            PlaybackStateHolder.setPlaylist(subset, index)
+        }
+        lifecycleScope.launch(Dispatchers.IO) {
+            PlaylistCache.saveQueue(this@MainActivity, subset)
+        }
         val intent = Intent(this, MusicPlaybackService::class.java).apply {
             action = MusicPlaybackService.ACTION_PLAY_INDEX
             putExtra(MusicPlaybackService.EXTRA_INDEX, index)
         }
-        ContextCompat.startForegroundService(this, intent)
+        runCatching {
+            ContextCompat.startForegroundService(this, intent)
+        }.onFailure {
+            Toast.makeText(this, R.string.playback_start_failed, Toast.LENGTH_SHORT).show()
+        }
     }
 
     override fun notifyLyricStyleChanged() {

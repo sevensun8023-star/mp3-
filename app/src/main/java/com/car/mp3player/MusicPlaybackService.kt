@@ -17,6 +17,7 @@ import android.os.Looper
 import androidx.core.app.NotificationCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
@@ -33,7 +34,9 @@ import java.io.File
 import kotlin.random.Random
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -62,6 +65,7 @@ class MusicPlaybackService : Service() {
     private var audioFocusRequest: AudioFocusRequest? = null
     private var hasAudioFocus = false
     private var foregroundStarted = false
+    private var playlistJob: Job? = null
 
     private val audioFocusListener = AudioManager.OnAudioFocusChangeListener { focus ->
         val player = exoPlayer ?: return@OnAudioFocusChangeListener
@@ -92,7 +96,7 @@ class MusicPlaybackService : Service() {
                 persistProgress(song, p.currentPosition)
             }
             if (p.isPlaying && saveTick % 50 == 0) {
-                ensureExclusiveAudioFocus()
+                acquireAudioFocus()
             }
             handler.postDelayed(this, 120L)
         }
@@ -106,6 +110,10 @@ class MusicPlaybackService : Service() {
             addListener(object : Player.Listener {
                 override fun onPlaybackStateChanged(playbackState: Int) {
                     if (playbackState == Player.STATE_ENDED) playNext()
+                }
+
+                override fun onPlayerError(error: PlaybackException) {
+                    android.util.Log.e(TAG, "ExoPlayer error", error)
                 }
             })
         }
@@ -186,17 +194,31 @@ class MusicPlaybackService : Service() {
     }
 
     private fun runWithPlaylist(intent: Intent?, block: (List<Song>) -> Unit) {
-        metadataScope.launch {
-            val list = withContext(Dispatchers.IO) { resolvePlaylist(intent) }
-            withContext(Dispatchers.Main) { block(list) }
+        playlistJob?.cancel()
+        playlistJob = metadataScope.launch {
+            try {
+                val list = withContext(Dispatchers.IO) { resolvePlaylist(intent) }
+                withContext(Dispatchers.Main) {
+                    runCatching { block(list) }.onFailure {
+                        android.util.Log.e(TAG, "playback action failed", it)
+                        ensureForeground()
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                android.util.Log.e(TAG, "resolvePlaylist failed", e)
+                withContext(Dispatchers.Main) { ensureForeground() }
+            }
         }
     }
 
     private fun resolvePlaylist(intent: Intent?): List<Song> {
-        intent?.let { readPlaylist(it) }?.map { it.toSong() }?.takeIf { it.isNotEmpty() }?.let { return it }
+        PlaybackStateHolder.songs.takeIf { it.isNotEmpty() }?.let { return it }
         PlaylistCache.loadQueue(this).takeIf { it.isNotEmpty() }?.let { return it }
         PlaylistCache.load(this).takeIf { it.isNotEmpty() }?.let { return it }
-        return PlaybackStateHolder.songs
+        intent?.let { readPlaylist(it) }?.map { it.toSong() }?.takeIf { it.isNotEmpty() }?.let { return it }
+        return emptyList()
     }
 
     private fun startFromCachedQueue(
@@ -260,37 +282,48 @@ class MusicPlaybackService : Service() {
     private fun startPlaylist(list: List<Song>, index: Int, seekMs: Long = 0L) {
         playlist = list
         currentIndex = index.coerceIn(0, (list.size - 1).coerceAtLeast(0))
-        PlaybackStateHolder.setPlaylist(list, currentIndex)
+        when {
+            PlaybackStateHolder.songs.isEmpty() -> PlaybackStateHolder.setPlaylist(list, currentIndex)
+            PlaybackStateHolder.songs === list -> PlaybackStateHolder.setCurrentIndex(currentIndex)
+            else -> PlaybackStateHolder.setPlaylist(list, currentIndex)
+        }
         refillShuffleQueue()
         playSongAt(currentIndex, seekMs)
     }
 
     private fun playSongAt(index: Int, seekMs: Long = 0L) {
         if (index !in playlist.indices) return
-        ensureExclusiveAudioFocus()
-        currentIndex = index
-        val song = playlist[index]
-        val player = exoPlayer ?: return
+        runCatching {
+            acquireAudioFocus()
+            currentIndex = index
+            val song = playlist[index]
+            val player = exoPlayer ?: return@runCatching
 
-        val item = buildMediaItem(song)
-        player.setMediaItem(item, seekMs)
-        player.prepare()
-        player.play()
+            val item = buildMediaItem(song)
+            player.setMediaItem(item, seekMs)
+            player.prepare()
+            player.play()
 
-        lastClusterMetadataKey = ""
-        PlaybackStateHolder.setCoverArt(null)
-        currentLines = loadLocalLyrics(song)
-        ensureForeground()
-        updateNotification(song)
-        handler.removeCallbacks(progressRunnable)
-        handler.post(progressRunnable)
-        persistProgress(song, seekMs)
-        PlaybackStateHolder.update(song, true, seekMs, currentLines, player.duration.coerceAtLeast(0L))
-        updateClusterMetadata(song, seekMs)
-        runCatching { LyricsOverlayService.start(applicationContext) }
-        LyricsOverlayService.updateLyrics(applicationContext, PlaybackStateHolder.lyricState)
-        runCatching { ClusterLyricService.start(applicationContext) }
-        loadMetadataAsync(song)
+            lastClusterMetadataKey = ""
+            PlaybackStateHolder.setCoverArt(null)
+            currentLines = loadLocalLyrics(song)
+            ensureForeground()
+            updateNotification(song)
+            handler.removeCallbacks(progressRunnable)
+            handler.post(progressRunnable)
+            persistProgress(song, seekMs)
+            PlaybackStateHolder.update(song, true, seekMs, currentLines, player.duration.coerceAtLeast(0L))
+            updateClusterMetadata(song, seekMs)
+            handler.post {
+                runCatching { LyricsOverlayService.start(applicationContext) }
+                LyricsOverlayService.updateLyrics(applicationContext, PlaybackStateHolder.lyricState)
+                runCatching { ClusterLyricService.start(applicationContext) }
+            }
+            loadMetadataAsync(song)
+        }.onFailure {
+            android.util.Log.e(TAG, "playSongAt failed", it)
+            ensureForeground()
+        }
     }
 
     private fun buildMediaItem(song: Song): MediaItem {
@@ -331,11 +364,6 @@ class MusicPlaybackService : Service() {
         }
     }
 
-    private fun ensureExclusiveAudioFocus() {
-        releaseAudioFocus()
-        acquireAudioFocus()
-    }
-
     private fun releaseAudioFocus() {
         if (!hasAudioFocus) return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -357,7 +385,9 @@ class MusicPlaybackService : Service() {
         val updated = playlist[idx].copy(lrcPath = lrcPath)
         playlist = playlist.toMutableList().apply { set(idx, updated) }
         PlaybackStateHolder.updateSongLrcPath(songPath, lrcPath)
-        PlaylistCache.saveQueue(applicationContext, playlist)
+        metadataScope.launch(Dispatchers.IO) {
+            PlaylistCache.saveQueue(applicationContext, playlist)
+        }
     }
 
     private fun loadMetadataAsync(song: Song) {
@@ -404,7 +434,6 @@ class MusicPlaybackService : Service() {
 
     private fun playNext() {
         if (playlist.isEmpty()) return
-        ensureExclusiveAudioFocus()
         val next = when (PlaybackStateHolder.playMode) {
             PlaybackMode.SHUFFLE -> {
                 if (shuffleQueue.isEmpty()) refillShuffleQueue()
@@ -480,10 +509,12 @@ class MusicPlaybackService : Service() {
         val player = exoPlayer ?: return
         if (player.mediaItemCount <= 0) return
         val current = player.currentMediaItem ?: return
-        player.replaceMediaItem(
-            player.currentMediaItemIndex.coerceAtLeast(0),
-            current.buildUpon().setMediaMetadata(metadata).build()
-        )
+        runCatching {
+            player.replaceMediaItem(
+                player.currentMediaItemIndex.coerceAtLeast(0),
+                current.buildUpon().setMediaMetadata(metadata).build()
+            )
+        }
         updateNotification(song, subtitle)
     }
 
@@ -532,7 +563,7 @@ class MusicPlaybackService : Service() {
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(title)
             .setContentText(text)
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setSmallIcon(R.drawable.ic_play)
             .setContentIntent(open)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setOngoing(true)
@@ -567,5 +598,6 @@ class MusicPlaybackService : Service() {
         const val EXTRA_SEARCH_ARTIST = "search_artist"
         private const val CHANNEL_ID = "playback"
         private const val NOTIFICATION_ID = 1001
+        private const val TAG = "MusicPlaybackService"
     }
 }

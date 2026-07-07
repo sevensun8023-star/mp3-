@@ -59,6 +59,15 @@ object PlaybackStateHolder {
         notify()
     }
 
+    /** 切歌时只更新索引，避免 2000 首歌列表反复触发 UI 全量刷新导致车机 ANR/闪退 */
+    fun setCurrentIndex(index: Int) {
+        if (songs.isEmpty()) return
+        val newIndex = index.coerceIn(0, songs.lastIndex)
+        if (newIndex == currentIndex) return
+        currentIndex = newIndex
+        notify()
+    }
+
     fun setPlayMode(mode: PlaybackMode) {
         playMode = mode
         listeners.forEach { it.onPlayModeChanged(mode) }
@@ -70,7 +79,6 @@ object PlaybackStateHolder {
         val updated = songs.toMutableList()
         updated[idx] = updated[idx].copy(lrcPath = lrcPath)
         songs = updated
-        listeners.forEach { it.onPlaylistChanged(songs) }
     }
 
     fun setCoverArt(path: String?) {

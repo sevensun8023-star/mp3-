@@ -23,6 +23,7 @@
     <string name="no_songs">暂无歌曲\n请在设置中扫描音乐</string>
     <string name="no_lyrics">暂无歌词</string>
     <string name="now_playing">正在播放</string>
+    <string name="playback_start_failed">无法启动播放，请重试</string>
     <string name="unknown_artist">未知歌手</string>
     <string name="channel_playback">音乐播放</string>
     <string name="settings_scan">扫描音乐</string>
