@@ -8,8 +8,18 @@ import java.io.File
 
 object PlaylistCache {
     private const val CACHE_FILE = "playlist_cache.json"
+    private const val QUEUE_FILE = "play_queue.json"
 
-    fun save(context: Context, songs: List<Song>) {
+    fun save(context: Context, songs: List<Song>) = writeSongs(context, CACHE_FILE, songs)
+
+    fun load(context: Context): List<Song> = readSongs(context, CACHE_FILE)
+
+    /** 当前正在播放的队列（可能是歌手子集），避免通过 Intent 传递大列表导致闪退 */
+    fun saveQueue(context: Context, songs: List<Song>) = writeSongs(context, QUEUE_FILE, songs)
+
+    fun loadQueue(context: Context): List<Song> = readSongs(context, QUEUE_FILE)
+
+    private fun writeSongs(context: Context, fileName: String, songs: List<Song>) {
         if (songs.isEmpty()) return
         val array = JSONArray()
         songs.forEach { song ->
@@ -25,12 +35,12 @@ object PlaylistCache {
             )
         }
         runCatching {
-            File(context.filesDir, CACHE_FILE).writeText(array.toString())
+            File(context.filesDir, fileName).writeText(array.toString())
         }
     }
 
-    fun load(context: Context): List<Song> {
-        val file = File(context.filesDir, CACHE_FILE)
+    private fun readSongs(context: Context, fileName: String): List<Song> {
+        val file = File(context.filesDir, fileName)
         if (!file.exists()) return emptyList()
         return runCatching {
             val array = JSONArray(file.readText())
