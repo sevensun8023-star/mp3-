@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.view.KeyEvent
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -80,6 +81,32 @@ class MainActivity : AppCompatActivity(), MainHost {
         if (binding.viewPager.currentItem == 1) {
             (supportFragmentManager.findFragmentByTag("f1") as? PlayerFragment)?.syncBottomNavTheme()
         }
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (handleSteeringWheelKey(event)) return true
+        return super.dispatchKeyEvent(event)
+    }
+
+    private fun handleSteeringWheelKey(event: KeyEvent): Boolean {
+        if (event.action != KeyEvent.ACTION_DOWN) return false
+        if (PlaybackStateHolder.songs.isEmpty()) return false
+        val action = when (event.keyCode) {
+            KeyEvent.KEYCODE_MEDIA_NEXT -> MusicPlaybackService.ACTION_NEXT
+            KeyEvent.KEYCODE_MEDIA_PREVIOUS -> MusicPlaybackService.ACTION_PREV
+            KeyEvent.KEYCODE_MEDIA_PLAY,
+            KeyEvent.KEYCODE_MEDIA_PAUSE,
+            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
+            KeyEvent.KEYCODE_HEADSETHOOK -> MusicPlaybackService.ACTION_TOGGLE
+            else -> return false
+        }
+        runCatching {
+            ContextCompat.startForegroundService(
+                this,
+                Intent(this, MusicPlaybackService::class.java).apply { this.action = action }
+            )
+        }
+        return true
     }
 
     private fun restoreCachedPlaylist(resumePlayback: Boolean = true) {

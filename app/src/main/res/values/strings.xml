@@ -82,7 +82,7 @@
     <string name="scanning">正在扫描…</string>
     <string name="overlay_on">悬浮歌词已开启</string>
     <string name="overlay_off">悬浮歌词已关闭</string>
-    <string name="byd_tips">比亚迪车机：请开启「显示在其他应用上层」，并将本应用加入极速模式白名单。</string>
+    <string name="byd_tips">比亚迪车机：请开启「显示在其他应用上层」，并将本应用加入极速模式白名单。方向盘切歌时请保持本应用在播放；系统自带音乐无法通过 App 禁用，可在车机应用管理里关闭其自启动。</string>
     <string name="has_lrc">歌词</string>
     <string name="playing_now">正在播放</string>
 </resources>

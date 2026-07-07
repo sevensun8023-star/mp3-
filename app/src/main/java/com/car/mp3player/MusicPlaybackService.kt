@@ -20,12 +20,14 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.session.MediaSession
 import com.car.mp3player.data.PlaylistCache
 import com.car.mp3player.data.SettingsRepository
 import com.car.mp3player.data.SongMetadataLoader
 import com.car.mp3player.lrc.LrcParser
 import com.car.mp3player.model.PlaybackMode
 import com.car.mp3player.model.Song
+import com.car.mp3player.playback.CarPlaylistPlayer
 import com.car.mp3player.playback.PlaybackStateHolder
 import java.io.File
 import kotlin.random.Random
@@ -39,6 +41,8 @@ import kotlinx.coroutines.withContext
 
 class MusicPlaybackService : Service() {
     private var exoPlayer: ExoPlayer? = null
+    private var sessionPlayer: CarPlaylistPlayer? = null
+    private var mediaSession: MediaSession? = null
     private val handler = Handler(Looper.getMainLooper())
     private val settings by lazy { SettingsRepository(this) }
     private var playlist: List<Song> = emptyList()
@@ -140,6 +144,10 @@ class MusicPlaybackService : Service() {
         }
 
         ensureForeground()
+
+        if (action in MEDIA_CONTROL_ACTIONS) {
+            claimMediaControl()
+        }
 
         when (action) {
             ACTION_PLAY_INDEX -> {
@@ -344,6 +352,7 @@ class MusicPlaybackService : Service() {
             persistProgress(song, seekMs)
             PlaybackStateHolder.update(song, true, seekMs, currentLines, player.duration.coerceAtLeast(0L))
             updateClusterMetadata(song, seekMs)
+            claimMediaControl()
             handler.post {
                 runCatching { LyricsOverlayService.start(applicationContext) }
                 LyricsOverlayService.updateLyrics(applicationContext, PlaybackStateHolder.lyricState)
@@ -358,6 +367,43 @@ class MusicPlaybackService : Service() {
     private fun songFileReadable(song: Song): Boolean {
         if (song.path.startsWith("content://")) return true
         return runCatching { File(song.path).isFile }.getOrDefault(false)
+    }
+
+    private fun claimMediaControl() {
+        acquireAudioFocus()
+        ensureMediaSession()
+        mediaSession?.let { runCatching { it.isActive = true } }
+    }
+
+    private fun ensureMediaSession() {
+        if (mediaSession != null) return
+        val player = exoPlayer ?: return
+        runCatching {
+            val wrapper = CarPlaylistPlayer(
+                player = player,
+                onSkipNext = { handler.post { playNext() } },
+                onSkipPrevious = { handler.post { playPrevious() } },
+                hasPlaylist = { playlist.isNotEmpty() }
+            )
+            sessionPlayer = wrapper
+            mediaSession = MediaSession.Builder(this, wrapper)
+                .setSessionActivity(
+                    PendingIntent.getActivity(
+                        this, 0, Intent(this, MainActivity::class.java),
+                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                    )
+                )
+                .build()
+        }.onFailure {
+            android.util.Log.e(TAG, "MediaSession create failed", it)
+        }
+    }
+
+    private fun releaseMediaSession() {
+        runCatching { mediaSession?.isActive = false }
+        runCatching { mediaSession?.release() }
+        mediaSession = null
+        sessionPlayer = null
     }
 
     private fun buildMediaItem(song: Song): MediaItem {
@@ -579,6 +625,7 @@ class MusicPlaybackService : Service() {
     override fun onDestroy() {
         handler.removeCallbacks(progressRunnable)
         releaseAudioFocus()
+        releaseMediaSession()
         runCatching { exoPlayer?.release() }
         exoPlayer = null
         foregroundStarted = false
@@ -646,5 +693,8 @@ class MusicPlaybackService : Service() {
         private const val CHANNEL_ID = "playback"
         private const val NOTIFICATION_ID = 1001
         private const val TAG = "MusicPlaybackService"
+        private val MEDIA_CONTROL_ACTIONS = setOf(
+            ACTION_PLAY_INDEX, ACTION_TOGGLE, ACTION_NEXT, ACTION_PREV, ACTION_RESUME
+        )
     }
 }

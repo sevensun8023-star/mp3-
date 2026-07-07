@@ -16,11 +16,23 @@ object LyricRenderer {
 
     const val PLACEHOLDER_LINE = "-----------"
 
-    /** 网易云桌面歌词：未播放行半透明白 */
-    private const val OVERLAY_PENDING = 0x99FFFFFF.toInt()
+    /** 悬浮歌词：待唱用主题色淡染（避免纯白在浅色背景看不见） */
+    private fun overlayPendingColor(highlight: Int): Int {
+        val hsv = FloatArray(3)
+        Color.colorToHSV(overlayHighlightColor(highlight), hsv)
+        hsv[1] = (hsv[1] * 0.55f).coerceIn(0.18f, 0.65f)
+        hsv[2] = (hsv[2] * 0.72f).coerceIn(0.42f, 0.78f)
+        return Color.HSVToColor(0xD8, hsv)
+    }
 
-    /** 网易云桌面歌词：下一行略亮白 */
-    private const val OVERLAY_NEXT = 0xCCFFFFFF.toInt()
+    /** 悬浮歌词：下一行略亮，仍带主题色调 */
+    private fun overlayNextColor(highlight: Int): Int {
+        val hsv = FloatArray(3)
+        Color.colorToHSV(overlayHighlightColor(highlight), hsv)
+        hsv[1] = (hsv[1] * 0.7f).coerceIn(0.22f, 0.75f)
+        hsv[2] = (hsv[2] * 0.88f).coerceIn(0.55f, 0.92f)
+        return Color.HSVToColor(0xEE, hsv)
+    }
 
     data class Style(
         val highlightColor: Int,
@@ -50,8 +62,8 @@ object LyricRenderer {
         val family = settings.lyricFontFamily()
         val bold = !forPlayer && settings.overlayLyricBold
         val highlight = if (forPlayer) settings.highlightColor else overlayHighlightColor(settings.highlightColor)
-        val pending = if (forPlayer) settings.pendingColor else OVERLAY_PENDING
-        val next = if (forPlayer) settings.nextLineColor else OVERLAY_NEXT
+        val pending = if (forPlayer) settings.pendingColor else overlayPendingColor(settings.highlightColor)
+        val next = if (forPlayer) settings.nextLineColor else overlayNextColor(settings.highlightColor)
         return Style(
             highlightColor = highlight,
             pendingColor = pending,
@@ -64,7 +76,7 @@ object LyricRenderer {
             currentScale = settings.currentLineScale,
             nextScale = settings.nextLineScale,
             bold = bold,
-            outline = false
+            outline = !forPlayer
         )
     }
 

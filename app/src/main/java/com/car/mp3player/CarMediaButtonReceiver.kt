@@ -6,6 +6,7 @@ import android.content.Intent
 import android.os.Build
 import android.view.KeyEvent
 import androidx.core.content.ContextCompat
+import com.car.mp3player.data.SettingsRepository
 import com.car.mp3player.playback.PlaybackStateHolder
 
 /**
@@ -23,22 +24,25 @@ class CarMediaButtonReceiver : BroadcastReceiver() {
             intent.getParcelableExtra(Intent.EXTRA_KEY_EVENT)
         } ?: return
 
-        if (keyEvent.action != KeyEvent.ACTION_DOWN) return
-
-        val action = when (keyEvent.keyCode) {
-            KeyEvent.KEYCODE_MEDIA_NEXT -> MusicPlaybackService.ACTION_NEXT
-            KeyEvent.KEYCODE_MEDIA_PREVIOUS -> MusicPlaybackService.ACTION_PREV
-            KeyEvent.KEYCODE_MEDIA_PLAY,
-            KeyEvent.KEYCODE_MEDIA_PAUSE,
-            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
-            KeyEvent.KEYCODE_HEADSETHOOK -> MusicPlaybackService.ACTION_TOGGLE
-            else -> return
+        if (keyEvent.action == KeyEvent.ACTION_DOWN) {
+            val action = when (keyEvent.keyCode) {
+                KeyEvent.KEYCODE_MEDIA_NEXT -> MusicPlaybackService.ACTION_NEXT
+                KeyEvent.KEYCODE_MEDIA_PREVIOUS -> MusicPlaybackService.ACTION_PREV
+                KeyEvent.KEYCODE_MEDIA_PLAY,
+                KeyEvent.KEYCODE_MEDIA_PAUSE,
+                KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
+                KeyEvent.KEYCODE_HEADSETHOOK -> MusicPlaybackService.ACTION_TOGGLE
+                else -> null
+            }
+            if (action != null) {
+                runCatching {
+                    ContextCompat.startForegroundService(
+                        context,
+                        Intent(context, MusicPlaybackService::class.java).apply { this.action = action }
+                    )
+                }
+            }
         }
-
-        ContextCompat.startForegroundService(
-            context,
-            Intent(context, MusicPlaybackService::class.java).apply { this.action = action }
-        )
         if (isOrderedBroadcast) {
             abortBroadcast()
         }
@@ -47,6 +51,6 @@ class CarMediaButtonReceiver : BroadcastReceiver() {
     private fun shouldHandle(context: Context): Boolean {
         if (PlaybackStateHolder.isPlaying) return true
         if (PlaybackStateHolder.songs.isNotEmpty()) return true
-        return false
+        return SettingsRepository(context).lastSongPath != null
     }
 }
