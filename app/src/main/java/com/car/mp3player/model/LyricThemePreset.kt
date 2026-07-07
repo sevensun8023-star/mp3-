@@ -72,6 +72,13 @@ enum class LyricFontFamily(
 
     companion object {
         fun fromId(id: String): LyricFontFamily = when (id) {
+            "mono" -> MONO
+            "condensed" -> CONDENSED
+            "rounded" -> ROUNDED
+            "noto_sans" -> NOTO_SANS
+            "qingke" -> QINGKE
+            "mashan" -> MASHAN
+            "serif" -> SERIF
             "sans" -> NOTO_SANS
             "round" -> QINGKE
             else -> entries.firstOrNull { it.id == id } ?: DEFAULT

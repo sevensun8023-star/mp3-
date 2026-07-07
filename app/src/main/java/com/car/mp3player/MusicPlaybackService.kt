@@ -5,6 +5,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.ComponentName
 import android.content.Intent
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
@@ -66,6 +67,7 @@ class MusicPlaybackService : Service() {
     private var hasAudioFocus = false
     private var foregroundStarted = false
     private var playlistJob: Job? = null
+    private val mediaButtonReceiver by lazy { ComponentName(this, CarMediaButtonReceiver::class.java) }
 
     private val audioFocusListener = AudioManager.OnAudioFocusChangeListener { focus ->
         val player = exoPlayer ?: return@OnAudioFocusChangeListener
@@ -372,7 +374,22 @@ class MusicPlaybackService : Service() {
 
     private fun claimMediaControl() {
         acquireAudioFocus()
+        registerMediaButtonReceiver()
         ensureMediaSession()
+    }
+
+    private fun registerMediaButtonReceiver() {
+        runCatching {
+            @Suppress("DEPRECATION")
+            audioManager.registerMediaButtonEventReceiver(mediaButtonReceiver)
+        }
+    }
+
+    private fun unregisterMediaButtonReceiver() {
+        runCatching {
+            @Suppress("DEPRECATION")
+            audioManager.unregisterMediaButtonEventReceiver(mediaButtonReceiver)
+        }
     }
 
     private fun ensureMediaSession() {
@@ -624,6 +641,7 @@ class MusicPlaybackService : Service() {
     override fun onDestroy() {
         handler.removeCallbacks(progressRunnable)
         releaseAudioFocus()
+        unregisterMediaButtonReceiver()
         releaseMediaSession()
         runCatching { exoPlayer?.release() }
         exoPlayer = null

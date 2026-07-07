@@ -73,21 +73,30 @@ object LyricRenderer {
         val family = settings.lyricFontFamily()
         val bold = !forPlayer && settings.overlayLyricBold
         val highlight = if (forPlayer) settings.highlightColor else overlayHighlightColor(settings.highlightColor)
-        val pending = if (forPlayer) settings.pendingColor else overlayPendingColor(settings.highlightColor)
-        val next = if (forPlayer) settings.nextLineColor else overlayNextColor(settings.highlightColor)
+        val pending = if (forPlayer) settings.pendingColor else overlayPendingColor(settings.pendingColor)
+        val next = if (forPlayer) settings.nextLineColor else overlayNextColor(settings.nextLineColor)
+        val overlayPlayedTop = adjustForGradient(highlight, lift = 0.35f)
+        val overlayPlayedBottom = adjustForGradient(highlight, lift = -0.05f)
+        val overlayPlayedStroke = adjustForStroke(highlight)
+        val overlayPendingTop = adjustForGradient(pending, lift = 0.28f)
+        val overlayPendingBottom = adjustForGradient(pending, lift = -0.08f)
+        val overlayPendingStroke = adjustForStroke(pending)
+        val overlayNextTop = adjustForGradient(next, lift = 0.24f)
+        val overlayNextBottom = adjustForGradient(next, lift = -0.06f)
+        val overlayNextStroke = adjustForStroke(next)
         return Style(
             highlightColor = highlight,
             pendingColor = pending,
             nextLineColor = next,
-            overlayPlayedTopColor = Color.parseColor("#FFF7D7DE"),
-            overlayPlayedBottomColor = Color.parseColor("#FFE95B77"),
-            overlayPlayedStrokeColor = Color.parseColor("#FF8F2A3E"),
-            overlayPendingTopColor = Color.parseColor("#FFF1F1F3"),
-            overlayPendingBottomColor = Color.parseColor("#FFBCBCC3"),
-            overlayPendingStrokeColor = Color.parseColor("#FF55555F"),
-            overlayNextTopColor = Color.parseColor("#FFEDEEF3"),
-            overlayNextBottomColor = Color.parseColor("#FFC9CAD2"),
-            overlayNextStrokeColor = Color.parseColor("#FF5F606B"),
+            overlayPlayedTopColor = overlayPlayedTop,
+            overlayPlayedBottomColor = overlayPlayedBottom,
+            overlayPlayedStrokeColor = overlayPlayedStroke,
+            overlayPendingTopColor = overlayPendingTop,
+            overlayPendingBottomColor = overlayPendingBottom,
+            overlayPendingStrokeColor = overlayPendingStroke,
+            overlayNextTopColor = overlayNextTop,
+            overlayNextBottomColor = overlayNextBottom,
+            overlayNextStrokeColor = overlayNextStroke,
             currentSizePx = baseCurrent * density * if (forPlayer) settings.currentLineScale else 1f,
             nextSizePx = baseNext * density * if (forPlayer) settings.nextLineScale else 1f,
             otherSizePx = baseOther * density,
@@ -96,7 +105,7 @@ object LyricRenderer {
             currentScale = settings.currentLineScale,
             nextScale = settings.nextLineScale,
             bold = bold,
-            outline = !forPlayer
+            outline = !forPlayer && settings.overlayStrokeEnabled
         )
     }
 
@@ -381,5 +390,21 @@ object LyricRenderer {
         hsv[1] = min(1f, hsv[1] * 1.2f)
         hsv[2] = min(1f, hsv[2] * 1.05f)
         return Color.HSVToColor(255, hsv)
+    }
+
+    private fun adjustForGradient(color: Int, lift: Float): Int {
+        val hsv = FloatArray(3)
+        Color.colorToHSV(color, hsv)
+        hsv[2] = (hsv[2] + lift).coerceIn(0.20f, 1f)
+        hsv[1] = (hsv[1] * 0.88f).coerceIn(0.08f, 1f)
+        return Color.HSVToColor(230, hsv)
+    }
+
+    private fun adjustForStroke(color: Int): Int {
+        val hsv = FloatArray(3)
+        Color.colorToHSV(color, hsv)
+        hsv[2] = (hsv[2] * 0.45f).coerceAtLeast(0.18f)
+        hsv[1] = (hsv[1] * 0.9f).coerceIn(0.1f, 1f)
+        return Color.HSVToColor(245, hsv)
     }
 }

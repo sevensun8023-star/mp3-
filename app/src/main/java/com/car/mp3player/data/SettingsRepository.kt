@@ -79,8 +79,12 @@ class SettingsRepository(context: Context) {
         set(value) = prefs.edit { putBoolean(KEY_BOOT_RETURN_HOME, value) }
 
     var overlayLyricBold: Boolean
-        get() = prefs.getBoolean(KEY_OVERLAY_BOLD, true)
+        get() = prefs.getBoolean(KEY_OVERLAY_BOLD, false)
         set(value) = prefs.edit { putBoolean(KEY_OVERLAY_BOLD, value) }
+
+    var overlayStrokeEnabled: Boolean
+        get() = prefs.getBoolean(KEY_OVERLAY_STROKE, true)
+        set(value) = prefs.edit { putBoolean(KEY_OVERLAY_STROKE, value) }
 
     var startupSoundEnabled: Boolean
         get() = prefs.getBoolean(KEY_STARTUP_SOUND, true)
@@ -235,6 +239,7 @@ class SettingsRepository(context: Context) {
         const val KEY_BOOT_OPEN_APP = "boot_open_app"
         const val KEY_BOOT_RETURN_HOME = "boot_return_home"
         const val KEY_OVERLAY_BOLD = "overlay_lyric_bold"
+        const val KEY_OVERLAY_STROKE = "overlay_stroke_enabled"
         const val KEY_STARTUP_SOUND = "startup_sound"
         const val KEY_PLAY_MODE = "play_mode"
         const val KEY_CLUSTER_LYRICS = "cluster_lyrics"

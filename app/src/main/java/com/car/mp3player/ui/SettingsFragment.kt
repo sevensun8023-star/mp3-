@@ -37,6 +37,7 @@ class SettingsFragment : Fragment() {
     private var switchBootReturnHome: SwitchMaterial? = null
     private var switchStartupSound: SwitchMaterial? = null
     private var switchOverlayBold: SwitchMaterial? = null
+    private var switchOverlayStroke: SwitchMaterial? = null
 
     private val overlayPermission = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -227,6 +228,7 @@ class SettingsFragment : Fragment() {
     private fun setupOverlayBoldSwitch() {
         val parent = binding.fontSizeSlider.parent as? LinearLayout ?: return
         switchOverlayBold?.let { parent.removeView(it) }
+        switchOverlayStroke?.let { parent.removeView(it) }
         val boldSwitch = SwitchMaterial(requireContext()).apply {
             text = getString(R.string.overlay_lyric_bold)
             isChecked = settings.overlayLyricBold
@@ -239,6 +241,17 @@ class SettingsFragment : Fragment() {
         val insertAt = parent.indexOfChild(binding.fontSizeSlider) + 1
         parent.addView(boldSwitch, insertAt)
         switchOverlayBold = boldSwitch
+        val strokeSwitch = SwitchMaterial(requireContext()).apply {
+            text = getString(R.string.overlay_lyric_stroke)
+            isChecked = settings.overlayStrokeEnabled
+            setOnCheckedChangeListener { _, checked ->
+                settings.overlayStrokeEnabled = checked
+                notifyLyricStyleChanged()
+                LyricsOverlayService.refresh(requireContext())
+            }
+        }
+        parent.addView(strokeSwitch, insertAt + 1)
+        switchOverlayStroke = strokeSwitch
     }
 
     private fun setupAppThemeChips() {
