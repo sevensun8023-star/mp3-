@@ -155,14 +155,14 @@ class MusicPlaybackService : Service() {
             }
             ACTION_NEXT -> {
                 if (playlist.isEmpty()) {
-                    startFromCachedQueue(playNext = true)
+                    startFromCachedQueue(shouldPlayNext = true)
                 } else {
                     playNext()
                 }
             }
             ACTION_PREV -> {
                 if (playlist.isEmpty()) {
-                    startFromCachedQueue(playPrevious = true)
+                    startFromCachedQueue(shouldPlayPrevious = true)
                 } else {
                     playPrevious()
                 }
@@ -183,7 +183,7 @@ class MusicPlaybackService : Service() {
     }
 
     private fun resolvePlaylist(intent: Intent?): List<Song> {
-        readPlaylist(intent)?.map { it.toSong() }?.takeIf { it.isNotEmpty() }?.let { return it }
+        intent?.let { readPlaylist(it) }?.map { it.toSong() }?.takeIf { it.isNotEmpty() }?.let { return it }
         PlaylistCache.loadQueue(this).takeIf { it.isNotEmpty() }?.let { return it }
         PlaylistCache.load(this).takeIf { it.isNotEmpty() }?.let { return it }
         return PlaybackStateHolder.songs
@@ -191,8 +191,8 @@ class MusicPlaybackService : Service() {
 
     private fun startFromCachedQueue(
         resume: Boolean = false,
-        playNext: Boolean = false,
-        playPrevious: Boolean = false
+        shouldPlayNext: Boolean = false,
+        shouldPlayPrevious: Boolean = false
     ) {
         val list = resolvePlaylist(null)
         if (list.isEmpty()) return
@@ -201,13 +201,13 @@ class MusicPlaybackService : Service() {
             val index = path?.let { p -> list.indexOfFirst { it.path == p } }?.takeIf { it >= 0 } ?: 0
             val seek = if (resume) settings.lastPositionMs.coerceAtLeast(0L) else 0L
             startPlaylist(list, index, seek)
-            if (playNext) playNext()
-            else if (playPrevious) playPrevious()
+            if (shouldPlayNext) playNext()
+            else if (shouldPlayPrevious) playPrevious()
             return
         }
         when {
-            playNext -> playNext()
-            playPrevious -> playPrevious()
+            shouldPlayNext -> playNext()
+            shouldPlayPrevious -> playPrevious()
         }
     }
 
