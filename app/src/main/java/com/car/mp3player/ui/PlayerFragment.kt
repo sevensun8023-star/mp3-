@@ -148,7 +148,7 @@ class PlayerFragment : Fragment(), PlaybackStateHolder.Listener {
                 cs.connect(binding.vinylRecord.id, ConstraintSet.END, stage.id, ConstraintSet.END)
                 cs.connect(binding.vinylRecord.id, ConstraintSet.TOP, stage.id, ConstraintSet.TOP)
                 cs.connect(binding.vinylRecord.id, ConstraintSet.BOTTOM, stage.id, ConstraintSet.BOTTOM)
-                cs.setVisibility(binding.scrollLyricView.id, ConstraintSet.GONE)
+                cs.setVisibility(binding.scrollLyricView.id, View.GONE)
             }
             PlayerLayoutMode.VINYL_LEFT -> {
                 cs.connect(binding.vinylRecord.id, ConstraintSet.START, stage.id, ConstraintSet.START)
@@ -159,7 +159,7 @@ class PlayerFragment : Fragment(), PlaybackStateHolder.Listener {
                 cs.connect(binding.scrollLyricView.id, ConstraintSet.END, stage.id, ConstraintSet.END)
                 cs.connect(binding.scrollLyricView.id, ConstraintSet.TOP, stage.id, ConstraintSet.TOP)
                 cs.connect(binding.scrollLyricView.id, ConstraintSet.BOTTOM, stage.id, ConstraintSet.BOTTOM)
-                cs.setVisibility(binding.scrollLyricView.id, ConstraintSet.VISIBLE)
+                cs.setVisibility(binding.scrollLyricView.id, View.VISIBLE)
             }
             PlayerLayoutMode.VINYL_RIGHT -> {
                 cs.connect(binding.scrollLyricView.id, ConstraintSet.START, stage.id, ConstraintSet.START)
@@ -170,7 +170,7 @@ class PlayerFragment : Fragment(), PlaybackStateHolder.Listener {
                 cs.connect(binding.vinylRecord.id, ConstraintSet.END, stage.id, ConstraintSet.END)
                 cs.connect(binding.vinylRecord.id, ConstraintSet.TOP, stage.id, ConstraintSet.TOP)
                 cs.connect(binding.vinylRecord.id, ConstraintSet.BOTTOM, stage.id, ConstraintSet.BOTTOM)
-                cs.setVisibility(binding.scrollLyricView.id, ConstraintSet.VISIBLE)
+                cs.setVisibility(binding.scrollLyricView.id, View.VISIBLE)
             }
         }
 
