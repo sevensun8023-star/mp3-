@@ -4,13 +4,19 @@ import android.content.Intent
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.os.Bundle
+import android.view.GestureDetector
 import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
+import androidx.constraintlayout.widget.ConstraintSet
 import androidx.core.content.ContextCompat
+import androidx.core.view.GestureDetectorCompat
 import androidx.fragment.app.Fragment
+import androidx.transition.AutoTransition
+import androidx.transition.TransitionManager
 import com.car.mp3player.MusicPlaybackService
 import com.car.mp3player.R
 import com.car.mp3player.data.SettingsRepository
@@ -24,13 +30,21 @@ import com.google.android.material.slider.Slider
 import kotlin.math.max
 
 class PlayerFragment : Fragment(), PlaybackStateHolder.Listener {
+
+    private enum class PlayerLayoutMode {
+        CENTER,
+        VINYL_LEFT,
+        VINYL_RIGHT
+    }
+
     private var _binding: FragmentPlayerBinding? = null
     private val binding get() = _binding!!
     private var userSeeking = false
     private lateinit var settings: SettingsRepository
-    private var showLyrics = false
+    private var layoutMode = PlayerLayoutMode.CENTER
     private var defaultThemeColor = Color.parseColor("#FF1A1410")
     private var currentPlayerBgColor = Color.parseColor("#FF1A1410")
+    private var stageTapDetector: GestureDetectorCompat? = null
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentPlayerBinding.inflate(inflater, container, false)
@@ -56,18 +70,117 @@ class PlayerFragment : Fragment(), PlaybackStateHolder.Listener {
             }
         })
 
-        binding.vinylRecord.setOnClickListener { togglePlayerView() }
-        binding.scrollLyricView.setOnClickListener { togglePlayerView() }
+        setupStageTapHandling()
+        binding.scrollLyricView.setOnClickListener {
+            applyLayoutMode(PlayerLayoutMode.CENTER, animate = true)
+        }
         binding.scrollLyricView.setOnLongClickListener {
             showLyricSearchDialog()
             true
         }
 
-        applyPlayerViewMode()
+        applyLayoutMode(PlayerLayoutMode.CENTER, animate = false)
         renderState()
         renderCover(PlaybackStateHolder.coverArtPath)
         updateProgressUi(PlaybackStateHolder.positionMs, PlaybackStateHolder.durationMs)
         syncBottomNavTheme()
+    }
+
+    private fun setupStageTapHandling() {
+        stageTapDetector = GestureDetectorCompat(
+            requireContext(),
+            object : GestureDetector.SimpleOnGestureListener() {
+                override fun onDown(e: MotionEvent): Boolean = true
+
+                override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+                    handleStageTap(e)
+                    return true
+                }
+            }
+        )
+        binding.playerStage.setOnTouchListener { _, event ->
+            stageTapDetector?.onTouchEvent(event) ?: false
+        }
+    }
+
+    private fun handleStageTap(event: MotionEvent) {
+        if (isPointInside(event, binding.vinylRecord)) {
+            when (layoutMode) {
+                PlayerLayoutMode.CENTER -> applyLayoutMode(PlayerLayoutMode.VINYL_LEFT, animate = true)
+                else -> applyLayoutMode(PlayerLayoutMode.CENTER, animate = true)
+            }
+            return
+        }
+        val half = binding.playerStage.width / 2f
+        if (event.x < half) {
+            applyLayoutMode(PlayerLayoutMode.VINYL_LEFT, animate = true)
+        } else {
+            applyLayoutMode(PlayerLayoutMode.VINYL_RIGHT, animate = true)
+        }
+    }
+
+    private fun isPointInside(event: MotionEvent, view: View): Boolean {
+        if (view.visibility != View.VISIBLE) return false
+        val loc = IntArray(2)
+        view.getLocationOnScreen(loc)
+        val stageLoc = IntArray(2)
+        binding.playerStage.getLocationOnScreen(stageLoc)
+        val x = loc[0] - stageLoc[0]
+        val y = loc[1] - stageLoc[1]
+        return event.x >= x && event.x <= x + view.width &&
+            event.y >= y && event.y <= y + view.height
+    }
+
+    private fun applyLayoutMode(mode: PlayerLayoutMode, animate: Boolean) {
+        layoutMode = mode
+        val stage = binding.playerStage
+        val cs = ConstraintSet()
+        cs.clone(stage)
+
+        cs.clear(binding.vinylRecord.id, ConstraintSet.END)
+        cs.clear(binding.vinylRecord.id, ConstraintSet.START)
+        cs.clear(binding.scrollLyricView.id, ConstraintSet.END)
+        cs.clear(binding.scrollLyricView.id, ConstraintSet.START)
+
+        when (mode) {
+            PlayerLayoutMode.CENTER -> {
+                cs.connect(binding.vinylRecord.id, ConstraintSet.START, stage.id, ConstraintSet.START)
+                cs.connect(binding.vinylRecord.id, ConstraintSet.END, stage.id, ConstraintSet.END)
+                cs.connect(binding.vinylRecord.id, ConstraintSet.TOP, stage.id, ConstraintSet.TOP)
+                cs.connect(binding.vinylRecord.id, ConstraintSet.BOTTOM, stage.id, ConstraintSet.BOTTOM)
+                cs.setVisibility(binding.scrollLyricView.id, ConstraintSet.GONE)
+            }
+            PlayerLayoutMode.VINYL_LEFT -> {
+                cs.connect(binding.vinylRecord.id, ConstraintSet.START, stage.id, ConstraintSet.START)
+                cs.connect(binding.vinylRecord.id, ConstraintSet.END, R.id.stageCenterGuide, ConstraintSet.START)
+                cs.connect(binding.vinylRecord.id, ConstraintSet.TOP, stage.id, ConstraintSet.TOP)
+                cs.connect(binding.vinylRecord.id, ConstraintSet.BOTTOM, stage.id, ConstraintSet.BOTTOM)
+                cs.connect(binding.scrollLyricView.id, ConstraintSet.START, R.id.stageCenterGuide, ConstraintSet.END)
+                cs.connect(binding.scrollLyricView.id, ConstraintSet.END, stage.id, ConstraintSet.END)
+                cs.connect(binding.scrollLyricView.id, ConstraintSet.TOP, stage.id, ConstraintSet.TOP)
+                cs.connect(binding.scrollLyricView.id, ConstraintSet.BOTTOM, stage.id, ConstraintSet.BOTTOM)
+                cs.setVisibility(binding.scrollLyricView.id, ConstraintSet.VISIBLE)
+            }
+            PlayerLayoutMode.VINYL_RIGHT -> {
+                cs.connect(binding.scrollLyricView.id, ConstraintSet.START, stage.id, ConstraintSet.START)
+                cs.connect(binding.scrollLyricView.id, ConstraintSet.END, R.id.stageCenterGuide, ConstraintSet.START)
+                cs.connect(binding.scrollLyricView.id, ConstraintSet.TOP, stage.id, ConstraintSet.TOP)
+                cs.connect(binding.scrollLyricView.id, ConstraintSet.BOTTOM, stage.id, ConstraintSet.BOTTOM)
+                cs.connect(binding.vinylRecord.id, ConstraintSet.START, R.id.stageCenterGuide, ConstraintSet.END)
+                cs.connect(binding.vinylRecord.id, ConstraintSet.END, stage.id, ConstraintSet.END)
+                cs.connect(binding.vinylRecord.id, ConstraintSet.TOP, stage.id, ConstraintSet.TOP)
+                cs.connect(binding.vinylRecord.id, ConstraintSet.BOTTOM, stage.id, ConstraintSet.BOTTOM)
+                cs.setVisibility(binding.scrollLyricView.id, ConstraintSet.VISIBLE)
+            }
+        }
+
+        if (animate) {
+            TransitionManager.beginDelayedTransition(stage, AutoTransition().apply { duration = 280L })
+        }
+        cs.applyTo(stage)
+        if (mode != PlayerLayoutMode.CENTER) {
+            binding.scrollLyricView.update(PlaybackStateHolder.lrcLines, PlaybackStateHolder.positionMs)
+        }
     }
 
     fun syncBottomNavTheme() {
@@ -106,16 +219,6 @@ class PlayerFragment : Fragment(), PlaybackStateHolder.Listener {
 
     override fun onDurationChanged(durationMs: Long) {
         if (!userSeeking) updateProgressUi(PlaybackStateHolder.positionMs, durationMs)
-    }
-
-    private fun togglePlayerView() {
-        showLyrics = !showLyrics
-        applyPlayerViewMode()
-    }
-
-    private fun applyPlayerViewMode() {
-        binding.vinylRecord.visibility = if (showLyrics) View.GONE else View.VISIBLE
-        binding.scrollLyricView.visibility = if (showLyrics) View.VISIBLE else View.GONE
     }
 
     private fun renderState() {
@@ -244,6 +347,7 @@ class PlayerFragment : Fragment(), PlaybackStateHolder.Listener {
     }
 
     override fun onDestroyView() {
+        stageTapDetector = null
         _binding = null
         super.onDestroyView()
     }

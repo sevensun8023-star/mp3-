@@ -33,8 +33,11 @@ class KaraokeLyricView @JvmOverloads constructor(
             if (!animating) return
             val lerp = if (settings.smoothLyrics) 0.22f else 1f
             displayPositionMs += (targetPositionMs - displayPositionMs) * lerp
+            if (!settings.smoothLyrics) {
+                displayPositionMs = targetPositionMs.toFloat()
+            }
             invalidate()
-            if (settings.smoothLyrics && abs(targetPositionMs - displayPositionMs) > 6f) {
+            if (needsContinuousFrames()) {
                 Choreographer.getInstance().postFrameCallback(this)
             } else {
                 displayPositionMs = targetPositionMs.toFloat()
@@ -55,14 +58,23 @@ class KaraokeLyricView @JvmOverloads constructor(
             invalidate()
             return
         }
-        if (!animating) {
-            animating = true
-            Choreographer.getInstance().postFrameCallback(frameCallback)
-        }
+        startAnimatingIfNeeded()
     }
 
     fun applySettings() {
         invalidate()
+    }
+
+    private fun startAnimatingIfNeeded() {
+        if (animating) return
+        animating = true
+        Choreographer.getInstance().postFrameCallback(frameCallback)
+    }
+
+    private fun needsContinuousFrames(): Boolean {
+        if (abs(targetPositionMs - displayPositionMs) > 2f) return true
+        val line = lyricState?.currentLine ?: return false
+        return line.chars.size > 1 && displayPositionMs in line.startTimeMs.toFloat()..line.endTimeMs.toFloat()
     }
 
     override fun onDetachedFromWindow() {
@@ -80,7 +92,7 @@ class KaraokeLyricView @JvmOverloads constructor(
             canvas,
             state.currentLine,
             state.nextLine,
-            displayPositionMs.toLong(),
+            displayPositionMs,
             width,
             height,
             style,

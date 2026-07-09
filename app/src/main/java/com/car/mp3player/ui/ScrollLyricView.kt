@@ -184,7 +184,7 @@ class ScrollLyricView @JvmOverloads constructor(
 
             if (i == idx) {
                 LyricRenderer.drawKaraokeLine(
-                    canvas, lines[i], displayPositionMs.toLong(), lineCenterY,
+                    canvas, lines[i], displayPositionMs, lineCenterY,
                     style, width.toFloat(), sungPaint, pendingPaint
                 )
             } else {

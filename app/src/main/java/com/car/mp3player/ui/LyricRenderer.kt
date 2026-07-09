@@ -174,7 +174,7 @@ object LyricRenderer {
     fun drawKaraokeLine(
         canvas: Canvas,
         line: LrcLine,
-        positionMs: Long,
+        positionMs: Float,
         centerY: Float,
         style: Style,
         maxWidth: Float,
@@ -193,55 +193,139 @@ object LyricRenderer {
 
         val totalHeight = rows.size * style.currentSizePx * 1.35f
         var topY = centerY - totalHeight / 2f + style.currentSizePx
-
-        var sungIndex = -1
-        for (i in line.chars.indices) {
-            if (positionMs >= line.chars[i].startTimeMs) sungIndex = i
-        }
+        val padX = padding(style) / 2f
         var charGlobalIndex = 0
 
         for (row in rows) {
-            var x = row.startX + padding(style) / 2f
-            for (ch in row.chars) {
-                val paint = if (charGlobalIndex <= sungIndex) sungPaint else pendingPaint
-                paint.color = if (charGlobalIndex <= sungIndex) style.highlightColor else style.pendingColor
-                val size = if (charGlobalIndex == sungIndex) style.currentSizePx * 1.04f else style.currentSizePx
-                paint.textSize = size
-                if (style.outline) {
-                    if (charGlobalIndex <= sungIndex) {
-                        drawGradientText(
-                            canvas = canvas,
-                            text = ch.char,
-                            x = x,
-                            baselineY = topY,
-                            paint = paint,
-                            style = style,
-                            topColor = style.overlayPlayedTopColor,
-                            bottomColor = style.overlayPlayedBottomColor,
-                            strokeColor = style.overlayPlayedStrokeColor
-                        )
-                    } else {
-                        drawGradientText(
-                            canvas = canvas,
-                            text = ch.char,
-                            x = x,
-                            baselineY = topY,
-                            paint = paint,
-                            style = style,
-                            topColor = style.overlayPendingTopColor,
-                            bottomColor = style.overlayPendingBottomColor,
-                            strokeColor = style.overlayPendingStrokeColor
-                        )
-                    }
-                } else {
-                    drawText(canvas, ch.char, x, topY, paint, style)
-                }
-                x += paint.measureText(ch.char)
-                charGlobalIndex++
-            }
+            drawKaraokeRowWipe(
+                canvas = canvas,
+                line = line,
+                row = row,
+                rowStartIndex = charGlobalIndex,
+                baselineY = topY,
+                positionMs = positionMs,
+                style = style,
+                padX = padX,
+                sungPaint = sungPaint,
+                pendingPaint = pendingPaint
+            )
+            charGlobalIndex += row.chars.size
             topY += style.currentSizePx * 1.35f
         }
         return totalHeight
+    }
+
+    private fun drawKaraokeRowWipe(
+        canvas: Canvas,
+        line: LrcLine,
+        row: CharRow,
+        rowStartIndex: Int,
+        baselineY: Float,
+        positionMs: Float,
+        style: Style,
+        padX: Float,
+        sungPaint: Paint,
+        pendingPaint: Paint
+    ) {
+        if (row.chars.isEmpty()) return
+        val text = row.chars.joinToString("") { it.char }
+        val x = row.startX + padX
+        val textSize = style.currentSizePx
+        val fillEndX = sungFillEndX(line, positionMs, pendingPaint, row, rowStartIndex, padX)
+
+        drawKaraokeRowLayer(canvas, text, x, baselineY, pendingPaint, style, played = false)
+
+        if (fillEndX > x + 0.5f) {
+            canvas.save()
+            canvas.clipRect(
+                x - 1f,
+                baselineY - textSize * 1.15f,
+                fillEndX,
+                baselineY + textSize * 0.15f
+            )
+            drawKaraokeRowLayer(canvas, text, x, baselineY, sungPaint, style, played = true)
+            canvas.restore()
+        }
+    }
+
+    private fun drawKaraokeRowLayer(
+        canvas: Canvas,
+        text: String,
+        x: Float,
+        baselineY: Float,
+        paint: Paint,
+        style: Style,
+        played: Boolean
+    ) {
+        if (style.outline) {
+            if (played) {
+                drawGradientText(
+                    canvas, text, x, baselineY, paint, style,
+                    style.overlayPlayedTopColor,
+                    style.overlayPlayedBottomColor,
+                    style.overlayPlayedStrokeColor
+                )
+            } else {
+                drawGradientText(
+                    canvas, text, x, baselineY, paint, style,
+                    style.overlayPendingTopColor,
+                    style.overlayPendingBottomColor,
+                    style.overlayPendingStrokeColor
+                )
+            }
+        } else {
+            paint.color = if (played) style.highlightColor else style.pendingColor
+            canvas.drawText(text, x, baselineY, paint)
+        }
+    }
+
+    private fun sungFillEndX(
+        line: LrcLine,
+        positionMs: Float,
+        paint: Paint,
+        row: CharRow,
+        rowStartIndex: Int,
+        padX: Float
+    ): Float {
+        var x = row.startX + padX
+        for (i in row.chars.indices) {
+            val globalIdx = rowStartIndex + i
+            val charText = row.chars[i].char
+            val w = paint.measureText(charText)
+            val start = charStartMs(line, globalIdx).toFloat()
+            val end = charEndMs(line, globalIdx).toFloat().coerceAtLeast(start + 1f)
+            when {
+                positionMs >= end -> x += w
+                positionMs <= start -> return x
+                else -> {
+                    val frac = ((positionMs - start) / (end - start)).coerceIn(0f, 1f)
+                    return x + w * frac
+                }
+            }
+        }
+        return x
+    }
+
+    private fun charStartMs(line: LrcLine, index: Int): Long {
+        val chars = line.chars
+        if (index in chars.indices && (index == 0 || chars[index].startTimeMs > chars[index - 1].startTimeMs)) {
+            return chars[index].startTimeMs
+        }
+        val count = chars.size.coerceAtLeast(1)
+        val duration = (line.endTimeMs - line.startTimeMs).coerceAtLeast(count.toLong())
+        val slot = duration / count
+        return line.startTimeMs + slot * index
+    }
+
+    private fun charEndMs(line: LrcLine, index: Int): Long {
+        val chars = line.chars
+        if (index + 1 < chars.size && chars[index + 1].startTimeMs > chars[index].startTimeMs) {
+            return chars[index + 1].startTimeMs
+        }
+        val count = chars.size.coerceAtLeast(1)
+        val duration = (line.endTimeMs - line.startTimeMs).coerceAtLeast(count.toLong())
+        val slot = duration / count
+        return charStartMs(line, index) + slot
     }
 
     fun drawWrappedStaticLine(
@@ -296,7 +380,7 @@ object LyricRenderer {
         canvas: Canvas,
         current: LrcLine?,
         next: LrcLine?,
-        positionMs: Long,
+        positionMs: Float,
         width: Int,
         height: Int,
         style: Style,
