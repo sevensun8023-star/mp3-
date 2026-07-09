@@ -50,27 +50,44 @@
                 android:textSize="15sp" />
         </LinearLayout>
 
-        <com.car.mp3player.ui.VinylRecordView
-            android:id="@+id/vinylRecord"
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:id="@+id/playerStage"
             android:layout_width="0dp"
             android:layout_height="0dp"
-            android:contentDescription="@string/tap_toggle_lyrics"
             app:layout_constraintBottom_toTopOf="@id/controlPanel"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/header" />
+            app:layout_constraintTop_toBottomOf="@id/header">
 
-        <com.car.mp3player.ui.ScrollLyricView
-            android:id="@+id/scrollLyricView"
-            android:layout_width="0dp"
-            android:layout_height="0dp"
-            android:layout_marginHorizontal="12dp"
-            android:paddingVertical="8dp"
-            android:visibility="gone"
-            app:layout_constraintBottom_toTopOf="@id/controlPanel"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/header" />
+            <androidx.constraintlayout.widget.Guideline
+                android:id="@+id/stageCenterGuide"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                app:layout_constraintGuide_percent="0.5" />
+
+            <com.car.mp3player.ui.VinylRecordView
+                android:id="@+id/vinylRecord"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:contentDescription="@string/tap_toggle_lyrics"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+
+            <com.car.mp3player.ui.ScrollLyricView
+                android:id="@+id/scrollLyricView"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:paddingHorizontal="12dp"
+                android:paddingVertical="8dp"
+                android:visibility="gone"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+        </androidx.constraintlayout.widget.ConstraintLayout>
 
         <LinearLayout
             android:id="@+id/controlPanel"
