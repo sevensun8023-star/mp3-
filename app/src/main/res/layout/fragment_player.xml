@@ -54,6 +54,8 @@
             android:id="@+id/playerStage"
             android:layout_width="0dp"
             android:layout_height="0dp"
+            android:clipChildren="false"
+            android:clipToPadding="false"
             app:layout_constraintBottom_toTopOf="@id/controlPanel"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
