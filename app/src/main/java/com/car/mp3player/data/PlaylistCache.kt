@@ -1,6 +1,7 @@
 package com.car.mp3player.data
 
 import android.content.Context
+import com.car.mp3player.model.LibraryKind
 import com.car.mp3player.model.Song
 import org.json.JSONArray
 import org.json.JSONObject
@@ -8,16 +9,35 @@ import java.io.File
 
 object PlaylistCache {
     private const val CACHE_FILE = "playlist_cache.json"
+    private const val PODCAST_CACHE_FILE = "podcast_cache.json"
     private const val QUEUE_FILE = "play_queue.json"
+    private const val MUSIC_QUEUE_FILE = "play_queue_music.json"
+    private const val PODCAST_QUEUE_FILE = "play_queue_podcast.json"
 
     fun save(context: Context, songs: List<Song>) = writeSongs(context, CACHE_FILE, songs)
 
     fun load(context: Context): List<Song> = readSongs(context, CACHE_FILE)
 
-    /** 当前正在播放的队列（可能是歌手子集），避免通过 Intent 传递大列表导致闪退 */
-    fun saveQueue(context: Context, songs: List<Song>) = writeSongs(context, QUEUE_FILE, songs)
+    fun savePodcast(context: Context, songs: List<Song>) = writeSongs(context, PODCAST_CACHE_FILE, songs)
 
-    fun loadQueue(context: Context): List<Song> = readSongs(context, QUEUE_FILE)
+    fun loadPodcast(context: Context): List<Song> = readSongs(context, PODCAST_CACHE_FILE)
+
+    /** 当前正在播放的队列（可能是歌手子集），避免通过 Intent 传递大列表导致闪退 */
+    fun saveQueue(context: Context, songs: List<Song>, library: LibraryKind = LibraryKind.MUSIC) {
+        writeSongs(context, queueFile(library), songs)
+        writeSongs(context, QUEUE_FILE, songs)
+    }
+
+    fun loadQueue(context: Context, library: LibraryKind = LibraryKind.MUSIC): List<Song> {
+        val typed = readSongs(context, queueFile(library))
+        if (typed.isNotEmpty()) return typed
+        return readSongs(context, QUEUE_FILE)
+    }
+
+    private fun queueFile(library: LibraryKind): String = when (library) {
+        LibraryKind.MUSIC -> MUSIC_QUEUE_FILE
+        LibraryKind.PODCAST -> PODCAST_QUEUE_FILE
+    }
 
     private fun writeSongs(context: Context, fileName: String, songs: List<Song>) {
         if (songs.isEmpty()) return

@@ -24,7 +24,6 @@ class PlaylistFragment : Fragment(), PlaybackStateHolder.Listener {
     private val binding get() = _binding!!
     private lateinit var songAdapter: SongAdapter
     private lateinit var artistAdapter: ArtistAdapter
-    private var allSongs = listOf<Song>()
     private var query = ""
     private var viewMode = PlaylistViewMode.ALL_SONGS
     private var sortOrder = PlaylistSortOrder.TITLE
@@ -47,7 +46,12 @@ class PlaylistFragment : Fragment(), PlaybackStateHolder.Listener {
             (activity as? MainHost)?.switchToTab(1)
             val visibleSongs = currentVisibleSongs()
             val playIndex = visibleSongs.indexOfFirst { it.path == song.path }.takeIf { it >= 0 } ?: indexInList
-            (activity as? MainHost)?.playSongSubset(visibleSongs, playIndex)
+            val library = if (viewMode == PlaylistViewMode.PODCAST) {
+                com.car.mp3player.model.LibraryKind.PODCAST
+            } else {
+                com.car.mp3player.model.LibraryKind.MUSIC
+            }
+            (activity as? MainHost)?.playSongSubset(visibleSongs, playIndex, library)
         }
         artistAdapter = ArtistAdapter { group ->
             selectedArtist = group.name
@@ -69,20 +73,13 @@ class PlaylistFragment : Fragment(), PlaybackStateHolder.Listener {
         })
 
         binding.chipAllSongs.setOnClickListener {
-            viewMode = PlaylistViewMode.ALL_SONGS
-            selectedArtist = null
-            binding.chipAllSongs.isChecked = true
-            binding.chipArtists.isChecked = false
-            updateToolbar()
-            applyFilter()
+            selectViewMode(PlaylistViewMode.ALL_SONGS)
         }
         binding.chipArtists.setOnClickListener {
-            viewMode = PlaylistViewMode.BY_ARTIST
-            selectedArtist = null
-            binding.chipArtists.isChecked = true
-            binding.chipAllSongs.isChecked = false
-            updateToolbar()
-            applyFilter()
+            selectViewMode(PlaylistViewMode.BY_ARTIST)
+        }
+        binding.chipPodcast.setOnClickListener {
+            selectViewMode(PlaylistViewMode.PODCAST)
         }
 
         binding.sortGroup.setOnCheckedChangeListener { _, checkedId ->
@@ -97,6 +94,18 @@ class PlaylistFragment : Fragment(), PlaybackStateHolder.Listener {
         binding.toolbar.setNavigationOnClickListener { exitArtistDetail() }
 
         refreshFromHost()
+    }
+
+    private fun selectViewMode(mode: PlaylistViewMode) {
+        viewMode = mode
+        selectedArtist = null
+        binding.chipAllSongs.isChecked = mode == PlaylistViewMode.ALL_SONGS
+        binding.chipArtists.isChecked = mode == PlaylistViewMode.BY_ARTIST
+        binding.chipPodcast.isChecked = mode == PlaylistViewMode.PODCAST
+        binding.chipArtists.visibility =
+            if (mode == PlaylistViewMode.PODCAST) View.GONE else View.VISIBLE
+        updateToolbar()
+        applyFilter()
     }
 
     private fun exitArtistDetail() {
@@ -126,17 +135,21 @@ class PlaylistFragment : Fragment(), PlaybackStateHolder.Listener {
     }
 
     override fun onPlaylistChanged(songs: List<Song>) {
-        allSongs = songs
+        songAdapter.playingPath = PlaybackStateHolder.currentSong?.path
         applyFilter()
     }
 
     fun refreshFromHost() {
-        allSongs = (activity as? MainHost)?.allSongs().orEmpty()
         applyFilter()
     }
 
+    private fun sourceSongs(): List<Song> = when (viewMode) {
+        PlaylistViewMode.PODCAST -> (activity as? MainHost)?.podcastSongs().orEmpty()
+        else -> (activity as? MainHost)?.allSongs().orEmpty()
+    }
+
     private fun currentVisibleSongs(): List<Song> {
-        var list = allSongs
+        var list = sourceSongs()
         if (selectedArtist != null) {
             list = list.filter { it.artist == selectedArtist }
         }
@@ -160,12 +173,18 @@ class PlaylistFragment : Fragment(), PlaybackStateHolder.Listener {
         songAdapter.playingPath = PlaybackStateHolder.currentSong?.path
         songAdapter.submitSongs(list)
         binding.songCountText.text = getString(R.string.song_count, list.size)
+        binding.emptyText.text = if (viewMode == PlaylistViewMode.PODCAST) {
+            getString(R.string.podcast_empty, SettingsRepository(requireContext()).podcastPaths().firstOrNull() ?: "")
+        } else {
+            getString(R.string.no_songs)
+        }
         binding.emptyText.visibility = if (list.isEmpty()) View.VISIBLE else View.GONE
         binding.songList.visibility = if (list.isEmpty()) View.GONE else View.VISIBLE
     }
 
     private fun showArtistList() {
         binding.songList.adapter = artistAdapter
+        val allSongs = (activity as? MainHost)?.allSongs().orEmpty()
         var artists = allSongs.groupBy { it.artist }
             .map { (name, songs) -> ArtistGroup(name, songs.size) }
         if (query.isNotBlank()) {
@@ -175,6 +194,7 @@ class PlaylistFragment : Fragment(), PlaybackStateHolder.Listener {
         artists = artists.sortedBy { it.name.lowercase() }
         artistAdapter.submitList(artists)
         binding.songCountText.text = getString(R.string.artist_count, artists.size)
+        binding.emptyText.text = getString(R.string.no_songs)
         binding.emptyText.visibility = if (artists.isEmpty()) View.VISIBLE else View.GONE
         binding.songList.visibility = if (artists.isEmpty()) View.GONE else View.VISIBLE
     }
@@ -201,6 +221,7 @@ class PlaylistFragment : Fragment(), PlaybackStateHolder.Listener {
             null
         }
         binding.toolbar.subtitle = when {
+            viewMode == PlaylistViewMode.PODCAST -> getString(R.string.filter_podcast)
             selectedArtist != null -> selectedArtist
             viewMode == PlaylistViewMode.BY_ARTIST -> getString(R.string.filter_artists)
             else -> null

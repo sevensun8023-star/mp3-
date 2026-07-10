@@ -17,6 +17,7 @@ import androidx.fragment.app.Fragment
 import com.car.mp3player.ClusterLyricService
 import com.car.mp3player.LyricsOverlayService
 import com.car.mp3player.R
+import com.car.mp3player.data.PodcastPaths
 import com.car.mp3player.data.ScanPathHelper
 import com.car.mp3player.data.SettingsRepository
 import com.car.mp3player.databinding.FragmentSettingsBinding
@@ -97,18 +98,24 @@ class SettingsFragment : Fragment() {
         setupLyricThemeChips()
         setupLyricFontChips()
         refreshScanPathsUi()
+        refreshPodcastPathsUi()
 
         binding.btnPickFolder.setOnClickListener { pickFolder.launch(null) }
         binding.btnAddMusic.setOnClickListener { addPresetPath("内置 Music") }
         binding.btnAddDownload.setOnClickListener { addPresetPath("下载目录") }
+        binding.btnAddPodcast.setOnClickListener { addPodcastFolder() }
 
         binding.btnScan.setOnClickListener {
             binding.btnScan.isEnabled = false
             binding.btnScan.text = getString(R.string.scanning)
-            (activity as? MainHost)?.scanMusic { count ->
+            (activity as? MainHost)?.scanMusic { musicCount, podcastCount ->
                 binding.btnScan.isEnabled = true
                 binding.btnScan.text = getString(R.string.settings_scan)
-                Toast.makeText(requireContext(), getString(R.string.scan_done, count), Toast.LENGTH_SHORT).show()
+                Toast.makeText(
+                    requireContext(),
+                    getString(R.string.scan_done_dual, musicCount, podcastCount),
+                    Toast.LENGTH_SHORT
+                ).show()
             }
         }
 
@@ -376,6 +383,28 @@ class SettingsFragment : Fragment() {
         LyricsOverlayService.refresh(requireContext())
         ClusterLyricService.refresh(requireContext())
         (activity as? MainHost)?.notifyLyricStyleChanged()
+    }
+
+    private fun addPodcastFolder() {
+        PodcastPaths.defaultFolders().forEach { settings.addPodcastPath(it) }
+        PodcastPaths.ensureDefaultFolder()
+        refreshPodcastPathsUi()
+        Toast.makeText(requireContext(), getString(R.string.folder_added), Toast.LENGTH_SHORT).show()
+    }
+
+    private fun refreshPodcastPathsUi() {
+        binding.podcastPathsChipGroup.removeAllViews()
+        settings.podcastPaths().forEach { path ->
+            val chip = Chip(requireContext()).apply {
+                text = ScanPathHelper.displayName(requireContext(), path)
+                isCloseIconVisible = true
+                setOnCloseIconClickListener {
+                    settings.removePodcastPath(path)
+                    refreshPodcastPathsUi()
+                }
+            }
+            binding.podcastPathsChipGroup.addView(chip)
+        }
     }
 
     private fun addPresetPath(label: String) {

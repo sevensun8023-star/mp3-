@@ -9,6 +9,7 @@ import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.car.mp3player.data.PlaybackBootstrap
 import com.car.mp3player.data.SettingsRepository
+import com.car.mp3player.model.LibraryKind
 import com.car.mp3player.playback.PlaybackStateHolder
 import com.car.mp3player.ui.StartupSoundPlayer
 import kotlinx.coroutines.CoroutineScope
@@ -56,11 +57,18 @@ class BootResumeService : Service() {
         if (!settings.autoResumePlayback) return false
 
         var songs = withContext(Dispatchers.IO) {
-            PlaybackBootstrap.loadCachedSongs(this@BootResumeService)
-        }
-        if (songs.isEmpty()) {
-            songs = withContext(Dispatchers.IO) {
-                PlaybackBootstrap.scanSongs(this@BootResumeService, settings)
+            val library = settings.inferLibrary(settings.lastSongPath)
+            when (library) {
+                LibraryKind.PODCAST -> {
+                    PlaybackBootstrap.loadCachedPodcast(this@BootResumeService).ifEmpty {
+                        PlaybackBootstrap.scanPodcastLibrary(this@BootResumeService, settings)
+                    }
+                }
+                LibraryKind.MUSIC -> {
+                    PlaybackBootstrap.loadCachedMusic(this@BootResumeService).ifEmpty {
+                        PlaybackBootstrap.scanMusicLibrary(this@BootResumeService, settings)
+                    }
+                }
             }
         }
         if (songs.isEmpty()) return false

@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.content.edit
 import com.car.mp3player.model.AppThemePreset
+import com.car.mp3player.model.LibraryKind
 import com.car.mp3player.model.LyricFontFamily
 import com.car.mp3player.model.LyricThemePreset
 import com.car.mp3player.model.PlaybackMode
@@ -194,6 +195,31 @@ class SettingsRepository(context: Context) {
 
     fun allScanEntries(): List<String> = scanPaths() + scanTreeUris()
 
+    var podcastPathsText: String
+        get() = prefs.getString(KEY_PODCAST_PATHS, DEFAULT_PODCAST_PATHS) ?: DEFAULT_PODCAST_PATHS
+        set(value) = prefs.edit { putString(KEY_PODCAST_PATHS, value) }
+
+    fun podcastPaths(): List<String> =
+        podcastPathsText.lines().map { PodcastPaths.normalize(it) }.filter { it.isNotEmpty() }
+
+    fun addPodcastPath(path: String) {
+        val paths = podcastPaths().toMutableSet()
+        if (paths.add(PodcastPaths.normalize(path))) {
+            podcastPathsText = paths.joinToString("\n")
+        }
+    }
+
+    fun removePodcastPath(path: String) {
+        val paths = podcastPaths().toMutableSet()
+        paths.remove(PodcastPaths.normalize(path))
+        podcastPathsText = paths.joinToString("\n")
+    }
+
+    fun isPodcastSong(path: String): Boolean = PodcastPaths.isUnderPodcast(path, podcastPaths())
+
+    fun inferLibrary(path: String?): LibraryKind =
+        if (path != null && isPodcastSong(path)) LibraryKind.PODCAST else LibraryKind.MUSIC
+
     fun addScanPath(path: String) {
         val paths = scanPaths().toMutableSet()
         if (paths.add(path)) scanPathsText = paths.joinToString("\n")
@@ -257,6 +283,7 @@ class SettingsRepository(context: Context) {
         const val KEY_LAST_POSITION = "last_position_ms"
         const val KEY_SCAN_PATHS = "scan_paths"
         const val KEY_SCAN_TREE_URIS = "scan_tree_uris"
+        const val KEY_PODCAST_PATHS = "podcast_paths"
         const val KEY_ONLINE_LYRICS = "online_lyrics"
         const val KEY_ONLINE_COVER = "online_cover"
 
@@ -265,5 +292,6 @@ class SettingsRepository(context: Context) {
         const val POSITION_BOTTOM = 2
 
         const val DEFAULT_SCAN_PATHS = "/sdcard/Music\n/storage/emulated/0/Music"
+        const val DEFAULT_PODCAST_PATHS = "/storage/emulated/0/Music/邓肯"
     }
 }

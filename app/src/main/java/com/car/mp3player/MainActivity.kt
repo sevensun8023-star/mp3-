@@ -15,6 +15,7 @@ import com.car.mp3player.data.PlaybackBootstrap
 import com.car.mp3player.data.PlaylistCache
 import com.car.mp3player.data.SettingsRepository
 import com.car.mp3player.databinding.ActivityMainBinding
+import com.car.mp3player.model.LibraryKind
 import com.car.mp3player.model.Song
 import com.car.mp3player.playback.PlaybackStateHolder
 import com.car.mp3player.ui.AppThemeManager
@@ -31,7 +32,8 @@ import kotlinx.coroutines.withContext
 class MainActivity : AppCompatActivity(), MainHost {
     private lateinit var binding: ActivityMainBinding
     private lateinit var settings: SettingsRepository
-    private var songs: List<Song> = emptyList()
+    private var musicSongs: List<Song> = emptyList()
+    private var podcastSongs: List<Song> = emptyList()
 
     private val storagePermission = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -66,7 +68,7 @@ class MainActivity : AppCompatActivity(), MainHost {
             true
         }
 
-        restoreCachedPlaylist(resumePlayback = false)
+        restoreCachedLibraries(resumePlayback = false)
         requestPermissionsAndScan()
         lifecycleScope.launch {
             if (!PlaybackStateHolder.isPlaying) {
@@ -109,35 +111,42 @@ class MainActivity : AppCompatActivity(), MainHost {
         return true
     }
 
-    private fun restoreCachedPlaylist(resumePlayback: Boolean = true) {
-        songs = PlaybackBootstrap.loadCachedSongs(this)
-        if (songs.isEmpty()) return
-        PlaybackStateHolder.setPlaylist(songs)
+    private fun restoreCachedLibraries(resumePlayback: Boolean = true) {
+        musicSongs = PlaybackBootstrap.loadCachedMusic(this)
+        podcastSongs = PlaybackBootstrap.loadCachedPodcast(this)
         binding.root.post {
-            (supportFragmentManager.findFragmentByTag("f0") as? PlaylistFragment)?.refreshFromHost()
-            if (resumePlayback && !PlaybackStateHolder.isPlaying) {
-                PlaybackBootstrap.resumeIfNeeded(this, songs, settings)
+            refreshPlaylistFragment()
+            if (!resumePlayback || PlaybackStateHolder.isPlaying) return@post
+            val library = settings.inferLibrary(settings.lastSongPath)
+            val resumeList = when (library) {
+                LibraryKind.PODCAST -> podcastSongs
+                LibraryKind.MUSIC -> musicSongs
+            }
+            if (resumeList.isNotEmpty()) {
+                PlaybackBootstrap.resumeIfNeeded(this, resumeList, settings)
             }
         }
     }
 
     override fun playSongAt(index: Int) {
-        playSongSubset(songs, index)
+        playSongSubset(musicSongs, index, LibraryKind.MUSIC)
     }
 
-    override fun playSongSubset(subset: List<Song>, index: Int) {
+    override fun playSongSubset(subset: List<Song>, index: Int, library: LibraryKind) {
         if (subset.isEmpty() || index !in subset.indices) return
+        PlaybackStateHolder.setActiveLibrary(library)
         if (PlaybackStateHolder.songs === subset) {
             PlaybackStateHolder.setCurrentIndex(index)
         } else {
-            PlaybackStateHolder.setPlaylist(subset, index)
+            PlaybackStateHolder.setPlaylist(subset, index, library)
         }
         lifecycleScope.launch(Dispatchers.IO) {
-            PlaylistCache.saveQueue(this@MainActivity, subset)
+            PlaylistCache.saveQueue(this@MainActivity, subset, library)
         }
         val intent = Intent(this, MusicPlaybackService::class.java).apply {
             action = MusicPlaybackService.ACTION_PLAY_INDEX
             putExtra(MusicPlaybackService.EXTRA_INDEX, index)
+            putExtra(MusicPlaybackService.EXTRA_LIBRARY, library.name)
         }
         runCatching {
             ContextCompat.startForegroundService(this, intent)
@@ -155,24 +164,31 @@ class MainActivity : AppCompatActivity(), MainHost {
         binding.bottomNav.menu.getItem(index).isChecked = true
     }
 
-    override fun scanMusic(onDone: ((Int) -> Unit)?) {
+    override fun scanMusic(onDone: ((Int, Int) -> Unit)?) {
         CoroutineScope(Dispatchers.Main).launch {
-            val scanned = withContext(Dispatchers.IO) {
-                PlaybackBootstrap.scanSongs(this@MainActivity, settings)
+            val result = withContext(Dispatchers.IO) {
+                PlaybackBootstrap.scanAllLibraries(this@MainActivity, settings)
             }
-            if (scanned.isNotEmpty()) {
-                songs = scanned
-                PlaybackStateHolder.setPlaylist(songs)
-                (supportFragmentManager.findFragmentByTag("f0") as? PlaylistFragment)?.refreshFromHost()
-                if (!PlaybackStateHolder.isPlaying) {
-                    PlaybackBootstrap.resumeIfNeeded(this@MainActivity, songs, settings)
+            musicSongs = result.music
+            podcastSongs = result.podcast
+            if (PlaybackStateHolder.activeLibrary == LibraryKind.MUSIC && musicSongs.isNotEmpty()) {
+                PlaybackStateHolder.setPlaylist(musicSongs, library = LibraryKind.MUSIC)
+            }
+            refreshPlaylistFragment()
+            if (!PlaybackStateHolder.isPlaying) {
+                val library = settings.inferLibrary(settings.lastSongPath)
+                val resumeList = if (library == LibraryKind.PODCAST) podcastSongs else musicSongs
+                if (resumeList.isNotEmpty()) {
+                    PlaybackBootstrap.resumeIfNeeded(this@MainActivity, resumeList, settings)
                 }
             }
-            onDone?.invoke(songs.size)
+            onDone?.invoke(musicSongs.size, podcastSongs.size)
         }
     }
 
-    override fun allSongs(): List<Song> = songs
+    override fun allSongs(): List<Song> = musicSongs
+
+    override fun podcastSongs(): List<Song> = podcastSongs
 
     override fun refreshAppTheme() {
         applyAppTheme()
@@ -183,6 +199,10 @@ class MainActivity : AppCompatActivity(), MainHost {
         val palette = AppThemeManager.palette(this, settings)
         AppThemeManager.applyPlayerBottomNav(binding.bottomNav, palette, backgroundColor)
         window.navigationBarColor = AppThemeManager.playerBottomNavColors(palette, backgroundColor)
+    }
+
+    private fun refreshPlaylistFragment() {
+        (supportFragmentManager.findFragmentByTag("f0") as? PlaylistFragment)?.refreshFromHost()
     }
 
     private fun applyAppTheme() {
@@ -200,9 +220,13 @@ class MainActivity : AppCompatActivity(), MainHost {
         if (needed.isNotEmpty()) {
             storagePermission.launch(needed.toTypedArray())
         } else {
-            scanMusic {
-                if (it > 0) {
-                    Toast.makeText(this, getString(R.string.scan_done, it), Toast.LENGTH_SHORT).show()
+            scanMusic { musicCount, podcastCount ->
+                if (musicCount > 0 || podcastCount > 0) {
+                    Toast.makeText(
+                        this,
+                        getString(R.string.scan_done_dual, musicCount, podcastCount),
+                        Toast.LENGTH_SHORT
+                    ).show()
                 }
             }
         }

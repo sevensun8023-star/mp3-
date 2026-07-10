@@ -11,9 +11,15 @@ enum class ThemeMode {
     SYSTEM
 }
 
+enum class LibraryKind {
+    MUSIC,
+    PODCAST
+}
+
 enum class PlaylistViewMode {
     ALL_SONGS,
-    BY_ARTIST
+    BY_ARTIST,
+    PODCAST
 }
 
 enum class PlaylistSortOrder {

@@ -1,5 +1,6 @@
 package com.car.mp3player.playback
 
+import com.car.mp3player.model.LibraryKind
 import com.car.mp3player.model.LrcLine
 import com.car.mp3player.model.LyricState
 import com.car.mp3player.model.PlaybackMode
@@ -24,6 +25,8 @@ object PlaybackStateHolder {
     var coverArtPath: String? = null
         private set
     var playMode: PlaybackMode = PlaybackMode.SHUFFLE
+        private set
+    var activeLibrary: LibraryKind = LibraryKind.MUSIC
         private set
 
     val currentSong: Song?
@@ -52,11 +55,16 @@ object PlaybackStateHolder {
         listeners.remove(listener)
     }
 
-    fun setPlaylist(list: List<Song>, startIndex: Int = 0) {
+    fun setPlaylist(list: List<Song>, startIndex: Int = 0, library: LibraryKind = activeLibrary) {
         songs = list
+        activeLibrary = library
         currentIndex = startIndex.coerceIn(0, (list.size - 1).coerceAtLeast(0))
         listeners.forEach { it.onPlaylistChanged(list) }
         notify()
+    }
+
+    fun setActiveLibrary(library: LibraryKind) {
+        activeLibrary = library
     }
 
     /** 切歌时只更新索引，避免 2000 首歌列表反复触发 UI 全量刷新导致车机 ANR/闪退 */

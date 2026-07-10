@@ -27,6 +27,7 @@ import com.car.mp3player.data.PlaylistCache
 import com.car.mp3player.data.SettingsRepository
 import com.car.mp3player.data.SongMetadataLoader
 import com.car.mp3player.lrc.LrcParser
+import com.car.mp3player.model.LibraryKind
 import com.car.mp3player.model.PlaybackMode
 import com.car.mp3player.model.Song
 import com.car.mp3player.playback.CarPlaylistPlayer
@@ -156,9 +157,10 @@ class MusicPlaybackService : Service() {
             ACTION_PLAY_INDEX -> {
                 val index = intent.getIntExtra(EXTRA_INDEX, 0)
                 val seek = intent.getLongExtra(EXTRA_SEEK, 0L)
-                runWithPlaylist(intent) { list ->
+                val library = intent.libraryExtra()
+                runWithPlaylist(intent, library) { list ->
                     if (list.isNotEmpty()) {
-                        startPlaylist(list, index, seek)
+                        startPlaylist(list, index, seek, library)
                     } else if (playlist.isNotEmpty()) {
                         playSongAt(index.coerceIn(0, playlist.lastIndex), seek)
                     }
@@ -215,11 +217,15 @@ class MusicPlaybackService : Service() {
         }
     }
 
-    private fun runWithPlaylist(intent: Intent?, block: (List<Song>) -> Unit) {
+    private fun runWithPlaylist(
+        intent: Intent?,
+        library: LibraryKind? = intent?.libraryExtra(),
+        block: (List<Song>) -> Unit
+    ) {
         playlistJob?.cancel()
         playlistJob = metadataScope.launch {
             try {
-                val list = withContext(Dispatchers.IO) { resolvePlaylist(intent) }
+                val list = withContext(Dispatchers.IO) { resolvePlaylist(intent, library) }
                 withContext(Dispatchers.Main) {
                     runCatching { block(list) }.onFailure {
                         android.util.Log.e(TAG, "playback action failed", it)
@@ -233,12 +239,22 @@ class MusicPlaybackService : Service() {
         }
     }
 
-    private fun resolvePlaylist(intent: Intent?): List<Song> {
+    private fun resolvePlaylist(intent: Intent?, library: LibraryKind? = null): List<Song> {
         PlaybackStateHolder.songs.takeIf { it.isNotEmpty() }?.let { return it }
-        PlaylistCache.loadQueue(this).takeIf { it.isNotEmpty() }?.let { return it }
-        PlaylistCache.load(this).takeIf { it.isNotEmpty() }?.let { return it }
+        val resolvedLibrary = library ?: settings.inferLibrary(settings.lastSongPath)
+        PlaylistCache.loadQueue(this, resolvedLibrary).takeIf { it.isNotEmpty() }?.let { return it }
+        if (resolvedLibrary == LibraryKind.PODCAST) {
+            PlaylistCache.loadPodcast(this).takeIf { it.isNotEmpty() }?.let { return it }
+        } else {
+            PlaylistCache.load(this).takeIf { it.isNotEmpty() }?.let { return it }
+        }
         intent?.let { readPlaylist(it) }?.map { it.toSong() }?.takeIf { it.isNotEmpty() }?.let { return it }
         return emptyList()
+    }
+
+    private fun Intent.libraryExtra(): LibraryKind {
+        val raw = getStringExtra(EXTRA_LIBRARY) ?: return settings.inferLibrary(settings.lastSongPath)
+        return runCatching { LibraryKind.valueOf(raw) }.getOrDefault(LibraryKind.MUSIC)
     }
 
     private fun startFromCachedQueue(
@@ -316,13 +332,17 @@ class MusicPlaybackService : Service() {
         refillShuffleQueue()
     }
 
-    private fun startPlaylist(list: List<Song>, index: Int, seekMs: Long = 0L) {
+    private fun startPlaylist(list: List<Song>, index: Int, seekMs: Long = 0L, library: LibraryKind? = null) {
         playlist = list
         currentIndex = index.coerceIn(0, (list.size - 1).coerceAtLeast(0))
+        val resolvedLibrary = library ?: settings.inferLibrary(list.getOrNull(currentIndex)?.path)
         when {
-            PlaybackStateHolder.songs.isEmpty() -> PlaybackStateHolder.setPlaylist(list, currentIndex)
-            PlaybackStateHolder.songs === list -> PlaybackStateHolder.setCurrentIndex(currentIndex)
-            else -> PlaybackStateHolder.setPlaylist(list, currentIndex)
+            PlaybackStateHolder.songs.isEmpty() ->
+                PlaybackStateHolder.setPlaylist(list, currentIndex, resolvedLibrary)
+            PlaybackStateHolder.songs === list ->
+                PlaybackStateHolder.setCurrentIndex(currentIndex)
+            else ->
+                PlaybackStateHolder.setPlaylist(list, currentIndex, resolvedLibrary)
         }
         refillShuffleQueue()
         playSongAt(currentIndex, seekMs)
@@ -706,6 +726,7 @@ class MusicPlaybackService : Service() {
         const val ACTION_STOP = "stop"
         const val EXTRA_INDEX = "index"
         const val EXTRA_SEEK = "seek"
+        const val EXTRA_LIBRARY = "library"
         const val EXTRA_PLAYLIST = "playlist"
         const val EXTRA_MODE = "mode"
         const val EXTRA_SEARCH_TITLE = "search_title"
