@@ -16,6 +16,7 @@ class LyricsOverlayService : Service() {
     private var windowManager: WindowManager? = null
     private var overlayView: KaraokeLyricView? = null
     private lateinit var settings: SettingsRepository
+    private var lastLyricState: LyricState? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -34,7 +35,8 @@ class LyricsOverlayService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
-        showOverlay()
+        showOverlayIfNeeded()
+        lastLyricState?.let { overlayView?.update(it) }
         return START_STICKY
     }
 
@@ -46,8 +48,11 @@ class LyricsOverlayService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    private fun showOverlay() {
+    private fun showOverlayIfNeeded() {
         if (overlayView != null) return
+        if (AppForegroundTracker.isInForeground) return
+        if (!settings.overlayEnabled || !Settings.canDrawOverlays(this)) return
+
         val view = KaraokeLyricView(this)
         val density = resources.displayMetrics.density
         val maxLines = settings.maxLyricVisualLines.coerceIn(1, 4)
@@ -66,6 +71,7 @@ class LyricsOverlayService : Service() {
         params.y = yOffsetFromSettings()
         overlayView = view
         windowManager?.addView(view, params)
+        lastLyricState?.let { view.update(it) }
     }
 
     private fun removeOverlay() {
@@ -91,13 +97,23 @@ class LyricsOverlayService : Service() {
     }
 
     private fun updateOverlay(state: LyricState) {
+        lastLyricState = state
         overlayView?.update(state)
     }
 
     private fun refreshLayout() {
+        val state = lastLyricState
         removeOverlay()
-        if (Settings.canDrawOverlays(this) && settings.overlayEnabled) {
-            showOverlay()
+        showOverlayIfNeeded()
+        state?.let { overlayView?.update(it) }
+    }
+
+    private fun onForegroundChanged(inForeground: Boolean) {
+        if (inForeground) {
+            removeOverlay()
+        } else if (settings.overlayEnabled && Settings.canDrawOverlays(this)) {
+            showOverlayIfNeeded()
+            lastLyricState?.let { overlayView?.update(it) }
         }
     }
 
@@ -119,6 +135,10 @@ class LyricsOverlayService : Service() {
 
         fun refresh(context: Context) {
             instance?.refreshLayout()
+        }
+
+        fun onAppForegroundChanged(inForeground: Boolean) {
+            instance?.onForegroundChanged(inForeground)
         }
     }
 }
