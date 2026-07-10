@@ -69,6 +69,17 @@
             app:chipBackgroundColor="@color/chip_bg"
             app:chipStrokeColor="@color/netease_red"
             app:chipStrokeWidth="1dp" />
+
+        <com.google.android.material.chip.Chip
+            android:id="@+id/chipPodcast"
+            style="@style/Widget.MaterialComponents.Chip.Choice"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:text="@string/filter_podcast"
+            app:chipBackgroundColor="@color/chip_bg"
+            app:chipStrokeColor="@color/netease_red"
+            app:chipStrokeWidth="1dp" />
     </LinearLayout>
 
     <RadioGroup

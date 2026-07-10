@@ -7,6 +7,11 @@
     <string name="search_hint">搜索歌曲或歌手</string>
     <string name="filter_all">全部歌曲</string>
     <string name="filter_artists">歌手</string>
+    <string name="filter_podcast">邓肯</string>
+    <string name="podcast_empty">暂无邓肯音频\n请将 B 站提取的 mp3/m4a 放入：\n%1$s\n然后在设置里扫描音乐</string>
+    <string name="podcast_scan_paths">邓肯音频文件夹（与音乐库独立）</string>
+    <string name="add_podcast_folder">添加邓肯文件夹</string>
+    <string name="scan_done_dual">音乐 %1$d 首，邓肯 %2$d 首</string>
     <string name="artist_count">共 %d 位歌手</string>
     <string name="artist_song_count">%d 首</string>
     <string name="sort_title">歌名</string>

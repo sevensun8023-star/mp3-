@@ -90,6 +90,30 @@
                     android:layout_marginTop="8dp"
                     android:text="@string/add_download_folder" />
 
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:text="@string/podcast_scan_paths"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="14sp" />
+
+                <com.google.android.material.chip.ChipGroup
+                    android:id="@+id/podcastPathsChipGroup"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    app:chipSpacingHorizontal="8dp"
+                    app:chipSpacingVertical="4dp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnAddPodcast"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/add_podcast_folder" />
+
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnScan"
                     android:layout_width="match_parent"
