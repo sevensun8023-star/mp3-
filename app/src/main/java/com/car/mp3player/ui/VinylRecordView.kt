@@ -28,9 +28,9 @@ class VinylRecordView @JvmOverloads constructor(
 
     init {
         LayoutInflater.from(context).inflate(R.layout.view_vinyl_record, this, true)
-        rotateGroup = findViewById(R.id.vinylRotateGroup)
-        discView = findViewById(R.id.vinylDisc)
-        coverView = findViewById(R.id.vinylCover)
+        rotateGroup = findViewById<FrameLayout>(R.id.vinylRotateGroup)
+        discView = findViewById<ImageView>(R.id.vinylDisc)
+        coverView = findViewById<ImageView>(R.id.vinylCover)
         coverView.outlineProvider = object : ViewOutlineProvider() {
             override fun getOutline(view: View, outline: Outline) {
                 outline.setOval(0, 0, view.width, view.height)
