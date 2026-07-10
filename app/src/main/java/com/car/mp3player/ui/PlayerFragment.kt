@@ -1,6 +1,7 @@
 package com.car.mp3player.ui
 
 import android.content.Intent
+import android.content.res.Configuration
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.os.Bundle
@@ -34,7 +35,8 @@ class PlayerFragment : Fragment(), PlaybackStateHolder.Listener {
     private enum class PlayerLayoutMode {
         CENTER,
         VINYL_LEFT,
-        VINYL_RIGHT
+        VINYL_RIGHT,
+        LYRICS_FULL
     }
 
     private var _binding: FragmentPlayerBinding? = null
@@ -103,20 +105,65 @@ class PlayerFragment : Fragment(), PlaybackStateHolder.Listener {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        if (!isLandscape() && layoutMode in setOf(PlayerLayoutMode.VINYL_LEFT, PlayerLayoutMode.VINYL_RIGHT)) {
+            applyLayoutMode(PlayerLayoutMode.CENTER, animate = false)
+        }
+    }
+
+    private fun isLandscape(): Boolean =
+        resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+
     private fun handleStageTap(event: MotionEvent) {
-        if (isPointInside(event, binding.vinylRecord)) {
-            when (layoutMode) {
-                PlayerLayoutMode.CENTER -> applyLayoutMode(PlayerLayoutMode.VINYL_LEFT, animate = true)
-                else -> applyLayoutMode(PlayerLayoutMode.CENTER, animate = true)
+        if (!isLandscape()) {
+            when {
+                layoutMode == PlayerLayoutMode.LYRICS_FULL &&
+                    isPointInside(event, binding.scrollLyricView) ->
+                    applyLayoutMode(PlayerLayoutMode.CENTER, animate = true)
+                layoutMode == PlayerLayoutMode.CENTER && isDiscTap(event) ->
+                    applyLayoutMode(PlayerLayoutMode.LYRICS_FULL, animate = true)
+                layoutMode == PlayerLayoutMode.LYRICS_FULL ->
+                    applyLayoutMode(PlayerLayoutMode.CENTER, animate = true)
             }
             return
         }
+
         val half = binding.playerStage.width / 2f
-        if (event.x < half) {
-            applyLayoutMode(PlayerLayoutMode.VINYL_LEFT, animate = true)
-        } else {
-            applyLayoutMode(PlayerLayoutMode.VINYL_RIGHT, animate = true)
+        when (layoutMode) {
+            PlayerLayoutMode.CENTER -> when {
+                isDiscTap(event) -> applyLayoutMode(PlayerLayoutMode.VINYL_LEFT, animate = true)
+                event.x < half -> applyLayoutMode(PlayerLayoutMode.VINYL_LEFT, animate = true)
+                else -> applyLayoutMode(PlayerLayoutMode.VINYL_RIGHT, animate = true)
+            }
+            PlayerLayoutMode.VINYL_LEFT -> when {
+                isPointInside(event, binding.vinylRecord) ||
+                    isPointInside(event, binding.scrollLyricView) ->
+                    applyLayoutMode(PlayerLayoutMode.CENTER, animate = true)
+                event.x >= half ->
+                    applyLayoutMode(PlayerLayoutMode.VINYL_RIGHT, animate = true)
+            }
+            PlayerLayoutMode.VINYL_RIGHT -> when {
+                isPointInside(event, binding.vinylRecord) ||
+                    isPointInside(event, binding.scrollLyricView) ->
+                    applyLayoutMode(PlayerLayoutMode.CENTER, animate = true)
+                event.x < half ->
+                    applyLayoutMode(PlayerLayoutMode.VINYL_LEFT, animate = true)
+            }
+            else -> Unit
         }
+    }
+
+    private fun isDiscTap(event: MotionEvent): Boolean {
+        val vinyl = binding.vinylRecord
+        if (vinyl.visibility != View.VISIBLE) return false
+        val stageLoc = IntArray(2)
+        binding.playerStage.getLocationOnScreen(stageLoc)
+        val vinylLoc = IntArray(2)
+        vinyl.getLocationOnScreen(vinylLoc)
+        val localX = event.x + (stageLoc[0] - vinylLoc[0])
+        val localY = event.y + (stageLoc[1] - vinylLoc[1])
+        return vinyl.isDiscTap(localX, localY)
     }
 
     private fun isPointInside(event: MotionEvent, view: View): Boolean {
@@ -139,18 +186,30 @@ class PlayerFragment : Fragment(), PlaybackStateHolder.Listener {
 
         cs.clear(binding.vinylRecord.id, ConstraintSet.END)
         cs.clear(binding.vinylRecord.id, ConstraintSet.START)
+        cs.clear(binding.vinylRecord.id, ConstraintSet.TOP)
+        cs.clear(binding.vinylRecord.id, ConstraintSet.BOTTOM)
         cs.clear(binding.scrollLyricView.id, ConstraintSet.END)
         cs.clear(binding.scrollLyricView.id, ConstraintSet.START)
 
         when (mode) {
             PlayerLayoutMode.CENTER -> {
+                cs.setVisibility(binding.vinylRecord.id, View.VISIBLE)
                 cs.connect(binding.vinylRecord.id, ConstraintSet.START, stage.id, ConstraintSet.START)
                 cs.connect(binding.vinylRecord.id, ConstraintSet.END, stage.id, ConstraintSet.END)
                 cs.connect(binding.vinylRecord.id, ConstraintSet.TOP, stage.id, ConstraintSet.TOP)
                 cs.connect(binding.vinylRecord.id, ConstraintSet.BOTTOM, stage.id, ConstraintSet.BOTTOM)
                 cs.setVisibility(binding.scrollLyricView.id, View.GONE)
             }
+            PlayerLayoutMode.LYRICS_FULL -> {
+                cs.setVisibility(binding.vinylRecord.id, View.GONE)
+                cs.connect(binding.scrollLyricView.id, ConstraintSet.START, stage.id, ConstraintSet.START)
+                cs.connect(binding.scrollLyricView.id, ConstraintSet.END, stage.id, ConstraintSet.END)
+                cs.connect(binding.scrollLyricView.id, ConstraintSet.TOP, stage.id, ConstraintSet.TOP)
+                cs.connect(binding.scrollLyricView.id, ConstraintSet.BOTTOM, stage.id, ConstraintSet.BOTTOM)
+                cs.setVisibility(binding.scrollLyricView.id, View.VISIBLE)
+            }
             PlayerLayoutMode.VINYL_LEFT -> {
+                cs.setVisibility(binding.vinylRecord.id, View.VISIBLE)
                 cs.connect(binding.vinylRecord.id, ConstraintSet.START, stage.id, ConstraintSet.START)
                 cs.connect(binding.vinylRecord.id, ConstraintSet.END, R.id.stageCenterGuide, ConstraintSet.START)
                 cs.connect(binding.vinylRecord.id, ConstraintSet.TOP, stage.id, ConstraintSet.TOP)
@@ -162,6 +221,7 @@ class PlayerFragment : Fragment(), PlaybackStateHolder.Listener {
                 cs.setVisibility(binding.scrollLyricView.id, View.VISIBLE)
             }
             PlayerLayoutMode.VINYL_RIGHT -> {
+                cs.setVisibility(binding.vinylRecord.id, View.VISIBLE)
                 cs.connect(binding.scrollLyricView.id, ConstraintSet.START, stage.id, ConstraintSet.START)
                 cs.connect(binding.scrollLyricView.id, ConstraintSet.END, R.id.stageCenterGuide, ConstraintSet.START)
                 cs.connect(binding.scrollLyricView.id, ConstraintSet.TOP, stage.id, ConstraintSet.TOP)
@@ -181,6 +241,7 @@ class PlayerFragment : Fragment(), PlaybackStateHolder.Listener {
         if (mode != PlayerLayoutMode.CENTER) {
             binding.scrollLyricView.update(PlaybackStateHolder.lrcLines, PlaybackStateHolder.positionMs)
         }
+        binding.vinylRecord.requestLayout()
     }
 
     fun syncBottomNavTheme() {

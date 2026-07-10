@@ -6,6 +6,7 @@ import android.graphics.Bitmap
 import android.graphics.Outline
 import android.util.AttributeSet
 import android.util.TypedValue
+import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewOutlineProvider
@@ -14,6 +15,7 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import com.car.mp3player.R
 import kotlin.math.min
+import kotlin.math.sqrt
 
 class VinylRecordView @JvmOverloads constructor(
     context: Context,
@@ -25,12 +27,15 @@ class VinylRecordView @JvmOverloads constructor(
     private val discView: ImageView
     private val coverView: ImageView
     private var rotationAnimator: ObjectAnimator? = null
+    private var discPx = 0
 
     init {
+        clipChildren = false
+        clipToPadding = false
         LayoutInflater.from(context).inflate(R.layout.view_vinyl_record, this, true)
-        rotateGroup = findViewById<FrameLayout>(R.id.vinylRotateGroup)
-        discView = findViewById<ImageView>(R.id.vinylDisc)
-        coverView = findViewById<ImageView>(R.id.vinylCover)
+        rotateGroup = findViewById(R.id.vinylRotateGroup)
+        discView = findViewById(R.id.vinylDisc)
+        coverView = findViewById(R.id.vinylCover)
         coverView.outlineProvider = object : ViewOutlineProvider() {
             override fun getOutline(view: View, outline: Outline) {
                 outline.setOval(0, 0, view.width, view.height)
@@ -43,22 +48,30 @@ class VinylRecordView @JvmOverloads constructor(
         super.onSizeChanged(w, h, oldw, oldh)
         if (w <= 0 || h <= 0) return
         val available = min(w, h).toFloat()
-        val discPx = (available * 0.94f).toInt().coerceIn(dp(240), dp(480))
-        val coverPx = (discPx * 0.435f).toInt()
+        // Rotating a square disc needs ~sqrt(2) headroom; keep a small margin too.
+        val discPx = (available / sqrt(2f) * 0.96f).toInt().coerceIn(dp(160), dp(520))
+        this.discPx = discPx
+        val coverPx = (discPx * 0.50f).toInt()
         layoutDiscAndCover(discPx, coverPx)
     }
 
     private fun layoutDiscAndCover(discPx: Int, coverPx: Int) {
+        (rotateGroup.layoutParams as FrameLayout.LayoutParams).apply {
+            width = discPx
+            height = discPx
+            gravity = Gravity.CENTER
+            rotateGroup.layoutParams = this
+        }
         (discView.layoutParams as FrameLayout.LayoutParams).apply {
             width = discPx
             height = discPx
-            gravity = android.view.Gravity.CENTER
+            gravity = Gravity.CENTER
             discView.layoutParams = this
         }
         (coverView.layoutParams as FrameLayout.LayoutParams).apply {
             width = coverPx
             height = coverPx
-            gravity = android.view.Gravity.CENTER
+            gravity = Gravity.CENTER
             coverView.layoutParams = this
         }
         rotateGroup.requestLayout()
@@ -66,6 +79,17 @@ class VinylRecordView @JvmOverloads constructor(
 
     private fun dp(value: Int): Int =
         TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, value.toFloat(), resources.displayMetrics).toInt()
+
+    /** Whether a touch point (view-local coords) hits the visible disc circle. */
+    fun isDiscTap(localX: Float, localY: Float): Boolean {
+        if (discPx <= 0) return false
+        val cx = width / 2f
+        val cy = height / 2f
+        val r = discPx / 2f
+        val dx = localX - cx
+        val dy = localY - cy
+        return dx * dx + dy * dy <= r * r
+    }
 
     fun setCoverBitmap(bitmap: Bitmap?) {
         if (bitmap == null) {
