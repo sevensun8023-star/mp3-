@@ -81,7 +81,7 @@ class OnlineMusicFragment : Fragment(), PlaybackStateHolder.Listener {
                         val playable = currentSongs.filter { !it.path.startsWith("meta://") }
                         val playIndex = playable.indexOfFirst { it.path == song.path }.coerceAtLeast(0)
                         val now = System.currentTimeMillis()
-                        if (now - lastClickMs < 280) return@SongAdapter
+                        if (now - lastClickMs < 280) return@onClick
                         lastClickMs = now
                         (activity as? MainHost)?.switchToTab(1)
                         (activity as? MainHost)?.playSongSubset(playable, playIndex, LibraryKind.ONLINE)
@@ -89,7 +89,7 @@ class OnlineMusicFragment : Fragment(), PlaybackStateHolder.Listener {
                 }
             },
             onLongClick = { song, _ ->
-                if (song.path.startsWith("meta://")) return@SongAdapter
+                if (song.path.startsWith("meta://")) return@onLongClick
                 library.addFavoriteTrackFromSong(song, api)
                 Toast.makeText(requireContext(), R.string.online_favorited, Toast.LENGTH_SHORT).show()
             }
