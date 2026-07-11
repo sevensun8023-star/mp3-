@@ -38,6 +38,9 @@ class OnlineLibraryStore(context: Context) {
     fun findPlaylist(id: String): UserPlaylist? =
         userPlaylists.firstOrNull { it.id == id }
 
+    fun findImportedPlaylist(playlistId: String): UserPlaylist? =
+        userPlaylists.firstOrNull { it.importedPlaylistId == playlistId }
+
     fun addFavoriteTrack(ref: OnlineTrackRef) {
         if (favoriteTracks.any { it.localId == ref.localId }) return
         favoriteTracks.add(0, ref)
