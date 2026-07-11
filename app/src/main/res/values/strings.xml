@@ -95,7 +95,7 @@
     <string name="online_api_primary">在线音乐 API 地址</string>
     <string name="online_api_backup">备用 API 地址（可选）</string>
     <string name="radio_api_url">网络电台 API 镜像</string>
-    <string name="podcast_rss_urls">播客 RSS 地址（每行一个）</string>
+    <string name="podcast_rss_urls">播客 RSS（可选，默认已内置怪谈/悬疑/流行）</string>
     <string name="skip_vip_songs">VIP/无法播放时自动跳过</string>
     <string name="podcast_show_desc">播客节目描述作为字幕</string>
     <string name="online_search_hint">搜索歌曲、歌手或歌单</string>
@@ -115,6 +115,6 @@
     <string name="radio_chinese">华语电台</string>
     <string name="radio_music">流行音乐</string>
     <string name="radio_empty">未找到电台</string>
-    <string name="podcast_rss_empty">请在设置中添加播客 RSS 地址\n每行一个链接，支持相声、听书等</string>
+    <string name="podcast_rss_empty">正在加载内置播客…\n若长时间无内容，请在设置中检查网络或更换 RSS 地址</string>
     <string name="podcast_load_failed">播客加载失败</string>
 </resources>
