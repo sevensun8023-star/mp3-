@@ -113,6 +113,7 @@
     <string name="online_shuffle_play">随机播放</string>
     <string name="online_favorite_playlist">收藏歌单</string>
     <string name="online_playlist_saved">歌单已保存到「我的」</string>
+    <string name="online_playlist_saved_count">已保存 %1$d 首到「我的」</string>
     <string name="online_playlist_already_saved">该歌单已在「我的」中</string>
     <string name="online_playlist_tap">%1$d 首 · 点击查看</string>
     <string name="online_playlist_meta">%1$d 首 · %2$s 收藏</string>
