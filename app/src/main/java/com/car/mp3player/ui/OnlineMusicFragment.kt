@@ -171,7 +171,7 @@ class OnlineMusicFragment : Fragment(), PlaybackStateHolder.Listener {
                 lrcPath = null
             )
         }
-        val favorites = library.favoriteSongs()
+        val favorites = library.standaloneFavoriteSongs()
         currentSongs = playlistHeaders + favorites
         renderSongList(currentSongs, getString(R.string.online_favorites_empty))
     }
@@ -258,17 +258,37 @@ class OnlineMusicFragment : Fragment(), PlaybackStateHolder.Listener {
         val playlistId = activePlaylistId ?: return
         val title = activePlaylistTitle.orEmpty()
         val summary = activePlaylistSummary
-        val songs = activePlayableSongs
-        if (songs.isEmpty()) return
         if (library.findImportedPlaylist(playlistId) != null) {
             Toast.makeText(requireContext(), R.string.online_playlist_already_saved, Toast.LENGTH_SHORT).show()
             updatePlaylistActionBar()
             return
         }
-        val importName = title.ifBlank { summary?.name.orEmpty() }.ifBlank { "在线歌单" }
-        library.importPlaylist(importName, playlistId, songs, api, summary?.coverUrl)
-        Toast.makeText(requireContext(), R.string.online_playlist_saved, Toast.LENGTH_SHORT).show()
-        updatePlaylistActionBar()
+        setLoading(true)
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                api.loadPlaylist(playlistId, title.ifBlank { summary?.name })
+            }
+            setLoading(false)
+            if (!result.ok) {
+                val message = result.errorMessage ?: getString(R.string.online_load_failed)
+                Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            val importName = title.ifBlank { result.summary?.name.orEmpty() }.ifBlank { "在线歌单" }
+            library.importPlaylist(
+                importName,
+                playlistId,
+                result.songs,
+                api,
+                result.summary?.coverUrl ?: summary?.coverUrl
+            )
+            Toast.makeText(
+                requireContext(),
+                getString(R.string.online_playlist_saved_count, result.songs.size),
+                Toast.LENGTH_SHORT
+            ).show()
+            updatePlaylistActionBar()
+        }
     }
 
     private fun setPlayMode(mode: PlaybackMode) {

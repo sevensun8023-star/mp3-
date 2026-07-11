@@ -32,12 +32,12 @@ class OnlineMusicApi(private val settings: SettingsRepository) {
         val id = extractPlaylistId(playlistId)
             ?: return PlaylistLoadResult(null, emptyList(), "无效歌单 ID")
 
-        val gdResult = loadPlaylistFromGdStudio(id)
+        val gdResult = completePlaylistTracks(id, loadPlaylistFromGdStudio(id))
         if (gdResult.songs.isNotEmpty()) {
             return gdResult.withDisplayTitle(displayTitle)
         }
 
-        val neteaseResult = loadPlaylistFromNeteaseDetail(id)
+        val neteaseResult = completePlaylistTracks(id, loadPlaylistFromNeteaseDetail(id))
         if (neteaseResult.songs.isNotEmpty()) {
             return neteaseResult.withDisplayTitle(displayTitle)
         }
@@ -105,8 +105,10 @@ class OnlineMusicApi(private val settings: SettingsRepository) {
     }
 
     private fun loadPlaylistFromGdStudio(id: String): PlaylistLoadResult {
-        val body = httpGet(buildUrl("types=playlist&source=netease&id=$id"))
-            ?: return PlaylistLoadResult(null, emptyList(), "网络请求失败")
+        val body = httpGet(
+            buildUrl("types=playlist&source=netease&id=$id"),
+            longTimeout = true
+        ) ?: return PlaylistLoadResult(null, emptyList(), "网络请求失败")
         val json = runCatching { JSONObject(body) }.getOrNull()
             ?: return PlaylistLoadResult(null, emptyList(), "解析歌单失败")
 
@@ -120,7 +122,7 @@ class OnlineMusicApi(private val settings: SettingsRepository) {
             ?: return PlaylistLoadResult(null, emptyList(), "歌单数据无效")
 
         val summary = summaryFromPlaylistObject(playlist, id)
-        val tracks = playlist.optJSONArray("tracks")?.let { parseGdStudioTracks(it) }.orEmpty()
+        val tracks = parsePlaylistTrackArray(playlist.optJSONArray("tracks"))
         if (tracks.isNotEmpty()) {
             return PlaylistLoadResult(summary, tracks)
         }
@@ -134,25 +136,106 @@ class OnlineMusicApi(private val settings: SettingsRepository) {
     }
 
     private fun loadPlaylistFromNeteaseDetail(id: String): PlaylistLoadResult {
-        val url = "https://music.163.com/api/playlist/detail?id=$id"
-        val body = httpGet(url, mapOf("Referer" to "https://music.163.com/"))
-            ?: return PlaylistLoadResult(null, emptyList(), null)
+        val url = "https://music.163.com/api/v6/playlist/detail?id=$id"
+        val body = httpGet(
+            url,
+            mapOf("Referer" to "https://music.163.com/"),
+            longTimeout = true
+        ) ?: return PlaylistLoadResult(null, emptyList(), null)
         val json = runCatching { JSONObject(body) }.getOrNull()
             ?: return PlaylistLoadResult(null, emptyList(), null)
         if (json.optInt("code") != 200) {
             return PlaylistLoadResult(null, emptyList(), null)
         }
 
-        val playlist = json.optJSONObject("result") ?: json.optJSONObject("playlist")
+        val playlist = json.optJSONObject("playlist")
             ?: return PlaylistLoadResult(null, emptyList(), null)
 
         val summary = summaryFromPlaylistObject(playlist, id)
-        val tracks = playlist.optJSONArray("tracks")?.let { parseNeteaseDetailTracks(it) }.orEmpty()
-        if (tracks.isNotEmpty()) {
-            return PlaylistLoadResult(summary, tracks)
-        }
+        val tracks = parsePlaylistTrackArray(playlist.optJSONArray("tracks"))
+        return PlaylistLoadResult(summary, tracks)
+    }
 
-        return PlaylistLoadResult(summary, emptyList(), null)
+    private fun completePlaylistTracks(id: String, result: PlaylistLoadResult): PlaylistLoadResult {
+        val summary = result.summary ?: return result
+        val expected = summary.trackCount
+        if (expected <= 0 || result.songs.size >= expected) return result
+
+        val trackIds = loadPlaylistTrackIds(id)
+        if (trackIds.isEmpty()) return result
+
+        val fetched = fetchSongsByNeteaseIds(trackIds)
+        if (fetched.size > result.songs.size) {
+            return PlaylistLoadResult(summary, fetched, result.errorMessage)
+        }
+        return result
+    }
+
+    private fun loadPlaylistTrackIds(id: String): List<String> {
+        val url = "https://music.163.com/api/v6/playlist/detail?id=$id"
+        val body = httpGet(
+            url,
+            mapOf("Referer" to "https://music.163.com/"),
+            longTimeout = true
+        ) ?: return emptyList()
+        val playlist = runCatching { JSONObject(body) }.getOrNull()?.optJSONObject("playlist")
+            ?: return emptyList()
+        return extractTrackIds(playlist)
+    }
+
+    private fun fetchSongsByNeteaseIds(ids: List<String>): List<Song> {
+        if (ids.isEmpty()) return emptyList()
+        val byId = linkedMapOf<String, Song>()
+        ids.chunked(200).forEach { batch ->
+            val encodedIds = URLEncoder.encode(
+                batch.joinToString(",", prefix = "[", postfix = "]"),
+                Charsets.UTF_8.name()
+            )
+            val url = "https://music.163.com/api/song/detail/?ids=$encodedIds"
+            val body = httpGet(url, mapOf("Referer" to "https://music.163.com/")) ?: return@forEach
+            val songs = runCatching { JSONObject(body) }.getOrNull()
+                ?.optJSONArray("songs")
+                ?.let { parsePlaylistTrackArray(it) }
+                .orEmpty()
+            songs.forEach { song ->
+                MediaPath.parseOnline(song.path)?.trackId?.let { trackId ->
+                    byId.putIfAbsent(trackId, song)
+                }
+            }
+        }
+        return ids.mapNotNull { byId[it] }
+    }
+
+    private fun extractTrackIds(playlist: JSONObject): List<String> {
+        playlist.optJSONArray("trackIds")?.let { array ->
+            val ids = buildList {
+                for (i in 0 until array.length()) {
+                    val item = array.optJSONObject(i)
+                    when {
+                        item != null -> add(item.optLong("id").toString())
+                        else -> array.optLong(i).takeIf { it > 0L }?.let { add(it.toString()) }
+                    }
+                }
+            }
+            if (ids.isNotEmpty()) return ids
+        }
+        return playlist.optJSONArray("tracks")?.let { array ->
+            buildList {
+                for (i in 0 until array.length()) {
+                    array.optJSONObject(i)?.optLong("id")?.takeIf { it > 0L }?.let { add(it.toString()) }
+                }
+            }
+        }.orEmpty()
+    }
+
+    private fun parsePlaylistTrackArray(array: JSONArray?): List<Song> {
+        if (array == null || array.length() == 0) return emptyList()
+        val first = array.optJSONObject(0) ?: return emptyList()
+        return when {
+            first.has("ar") -> parseGdStudioTracks(array)
+            first.has("artists") -> parseNeteaseDetailTracks(array)
+            else -> emptyList()
+        }
     }
 
     private fun searchPlaylistsViaCloudSearch(keyword: String, page: Int, count: Int): List<OnlinePlaylistSummary> {
@@ -312,7 +395,11 @@ class OnlineMusicApi(private val settings: SettingsRepository) {
         return null
     }
 
-    private fun httpGet(url: String, headers: Map<String, String> = emptyMap()): String? {
+    private fun httpGet(
+        url: String,
+        headers: Map<String, String> = emptyMap(),
+        longTimeout: Boolean = false
+    ): String? {
         val bases = listOfNotNull(
             settings.onlineMusicApiUrl.takeIf { it.isNotBlank() },
             settings.onlineMusicApiBackup.takeIf { it.isNotBlank() }
@@ -323,17 +410,21 @@ class OnlineMusicApi(private val settings: SettingsRepository) {
                 val endpoint = base.trimEnd('/')
                 if (endpoint.endsWith(".php")) "$endpoint?$q" else "$endpoint?$q"
             }
-            val result = httpGetOnce(resolved, headers)
+            val result = httpGetOnce(resolved, headers, longTimeout)
             if (result != null) return result
         }
-        if (url.startsWith("http")) return httpGetOnce(url, headers)
+        if (url.startsWith("http")) return httpGetOnce(url, headers, longTimeout)
         return null
     }
 
-    private fun httpGetOnce(url: String, headers: Map<String, String>): String? {
+    private fun httpGetOnce(
+        url: String,
+        headers: Map<String, String>,
+        longTimeout: Boolean = false
+    ): String? {
         val connection = (URL(url).openConnection() as HttpURLConnection).apply {
-            connectTimeout = 10_000
-            readTimeout = 12_000
+            connectTimeout = if (longTimeout) 15_000 else 10_000
+            readTimeout = if (longTimeout) 45_000 else 12_000
             requestMethod = "GET"
             setRequestProperty("User-Agent", USER_AGENT)
             setRequestProperty("Accept", "application/json, text/plain, */*")

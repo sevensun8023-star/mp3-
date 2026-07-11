@@ -15,6 +15,7 @@ class OnlineLibraryStore(context: Context) {
     private var favoriteTracks: MutableList<OnlineTrackRef> = mutableListOf()
     private var favoritePlaylistIds: MutableSet<String> = mutableSetOf()
     private var userPlaylists: MutableList<UserPlaylist> = mutableListOf()
+    private var playlistOnlyTracks: MutableMap<String, OnlineTrackRef> = mutableMapOf()
 
     init {
         load()
@@ -34,6 +35,7 @@ class OnlineLibraryStore(context: Context) {
 
     fun findTrack(localId: String): OnlineTrackRef? =
         favoriteTracks.firstOrNull { it.localId == localId }
+            ?: playlistOnlyTracks[localId]
 
     fun findPlaylist(id: String): UserPlaylist? =
         userPlaylists.firstOrNull { it.id == id }
@@ -104,6 +106,12 @@ class OnlineLibraryStore(context: Context) {
     }
 
     fun deletePlaylist(id: String) {
+        val playlist = findPlaylist(id)
+        playlist?.trackLocalIds?.forEach { localId ->
+            if (favoriteTracks.none { it.localId == localId }) {
+                playlistOnlyTracks.remove(localId)
+            }
+        }
         userPlaylists.removeAll { it.id == id }
         persist()
     }
@@ -111,8 +119,7 @@ class OnlineLibraryStore(context: Context) {
     fun importPlaylist(name: String, playlistId: String, songs: List<Song>, api: OnlineMusicApi, coverUrl: String?) {
         val trackIds = songs.mapNotNull { song ->
             val ref = api.refFromSong(song)?.copy(localId = MediaPath.newLocalId()) ?: return@mapNotNull null
-            favoriteTracks.removeAll { it.trackId == ref.trackId && it.source == ref.source }
-            favoriteTracks.add(ref)
+            playlistOnlyTracks[ref.localId] = ref
             ref.localId
         }
         userPlaylists.add(
@@ -150,27 +157,41 @@ class OnlineLibraryStore(context: Context) {
 
     fun favoriteSongs(): List<Song> = favoriteTracks.map { MediaPath.songFromOnlineRef(it) }
 
+    fun standaloneFavoriteSongs(): List<Song> {
+        val inPlaylists = userPlaylists.flatMap { it.trackLocalIds }.toSet()
+        return favoriteTracks
+            .filter { it.localId !in inPlaylists }
+            .map { MediaPath.songFromOnlineRef(it) }
+    }
+
     fun updateTrackBinding(localId: String, updated: OnlineTrackRef) {
-        val index = favoriteTracks.indexOfFirst { it.localId == localId }
-        if (index >= 0) {
-            favoriteTracks[index] = updated.copy(localId = localId)
+        val favoriteIndex = favoriteTracks.indexOfFirst { it.localId == localId }
+        if (favoriteIndex >= 0) {
+            favoriteTracks[favoriteIndex] = updated.copy(localId = localId)
+            persist()
+            return
+        }
+        if (playlistOnlyTracks.containsKey(localId)) {
+            playlistOnlyTracks[localId] = updated.copy(localId = localId)
             persist()
         }
     }
 
     fun rebindAllTracks(api: OnlineMusicApi): Int {
         var count = 0
-        favoriteTracks = favoriteTracks.map { ref ->
+        val rebind: (OnlineTrackRef) -> OnlineTrackRef = rebind@{ ref ->
             if (ref.trackId.isNotBlank()) {
                 val resolved = api.resolvePlayUrl(ref.source, ref.trackId)
-                if (resolved != null) return@map ref
+                if (resolved != null) return@rebind ref
             }
             val matched = api.matchTrackOnApi(ref)
             if (matched != null) {
                 count++
                 matched.copy(localId = ref.localId, album = ref.album.ifBlank { matched.album })
             } else ref
-        }.toMutableList()
+        }
+        favoriteTracks = favoriteTracks.map(rebind).toMutableList()
+        playlistOnlyTracks = playlistOnlyTracks.mapValues { (_, ref) -> rebind(ref) }.toMutableMap()
         persist()
         return count
     }
@@ -186,6 +207,10 @@ class OnlineLibraryStore(context: Context) {
             } ?: mutableSetOf()
             userPlaylists = root.optJSONArray("userPlaylists")?.let { parsePlaylists(it) }?.toMutableList()
                 ?: mutableListOf()
+            playlistOnlyTracks = root.optJSONArray("playlistOnlyTracks")?.let { parseTracks(it) }
+                ?.associateBy { it.localId }
+                ?.toMutableMap()
+                ?: mutableMapOf()
         }
     }
 
@@ -199,6 +224,9 @@ class OnlineLibraryStore(context: Context) {
             })
             put("userPlaylists", JSONArray().apply {
                 userPlaylists.forEach { put(playlistToJson(it)) }
+            })
+            put("playlistOnlyTracks", JSONArray().apply {
+                playlistOnlyTracks.values.forEach { put(trackToJson(it)) }
             })
         }
         runCatching { file.writeText(root.toString(2)) }
