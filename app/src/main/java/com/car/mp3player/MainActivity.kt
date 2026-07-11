@@ -176,7 +176,7 @@ class MainActivity : AppCompatActivity(), MainHost {
     override fun scanMusic(onDone: ((Int) -> Unit)?) {
         CoroutineScope(Dispatchers.Main).launch {
             val musicCount = withContext(Dispatchers.IO) {
-                PlaybackBootstrap.scanMusicLibrary(this@MainActivity, settings).also { musicSongs = it }
+                PlaybackBootstrap.scanMusicLibrary(this@MainActivity, settings).also { musicSongs = it }.size
             }
             if (PlaybackStateHolder.activeLibrary == LibraryKind.MUSIC && musicSongs.isNotEmpty()) {
                 PlaybackStateHolder.setPlaylist(musicSongs, library = LibraryKind.MUSIC)

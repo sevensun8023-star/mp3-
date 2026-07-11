@@ -61,7 +61,6 @@ class MusicScanner(
             while (cursor.moveToNext()) {
                 val path = cursor.getString(dataCol) ?: continue
                 if (!isAudioFile(path)) continue
-                if (isExcluded(path)) continue
                 songs.add(
                     Song(
                         id = cursor.getLong(idCol),

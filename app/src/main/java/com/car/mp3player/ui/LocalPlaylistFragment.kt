@@ -40,15 +40,17 @@ class LocalPlaylistFragment : Fragment(), PlaybackStateHolder.Listener {
         super.onViewCreated(view, savedInstanceState)
         val settings = SettingsRepository(requireContext())
         AppThemeManager.applyFragmentRoot(binding.root, AppThemeManager.palette(requireContext(), settings))
-        songAdapter = SongAdapter { song, indexInList ->
-            val now = System.currentTimeMillis()
-            if (now - lastClickMs < 280) return@SongAdapter
-            lastClickMs = now
-            (activity as? MainHost)?.switchToTab(1)
-            val visibleSongs = currentVisibleSongs()
-            val playIndex = visibleSongs.indexOfFirst { it.path == song.path }.takeIf { it >= 0 } ?: indexInList
-            (activity as? MainHost)?.playSongSubset(visibleSongs, playIndex, LibraryKind.MUSIC)
-        }
+        songAdapter = SongAdapter(
+            onClick = { song, indexInList ->
+                val now = System.currentTimeMillis()
+                if (now - lastClickMs < 280) return@SongAdapter
+                lastClickMs = now
+                (activity as? MainHost)?.switchToTab(1)
+                val visibleSongs = currentVisibleSongs()
+                val playIndex = visibleSongs.indexOfFirst { it.path == song.path }.takeIf { it >= 0 } ?: indexInList
+                (activity as? MainHost)?.playSongSubset(visibleSongs, playIndex, LibraryKind.MUSIC)
+            }
+        )
         artistAdapter = ArtistAdapter { group ->
             selectedArtist = group.name
             updateToolbar()
