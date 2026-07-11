@@ -129,7 +129,10 @@ class OnlineMusicApi(private val settings: SettingsRepository) {
                         title = item.optString("name"),
                         artist = artists.ifBlank { "未知歌手" },
                         album = item.optString("album"),
-                        picId = item.optString("pic_id").takeIf { it.isNotBlank() }
+                        picId = normalizePicId(
+                            item.optString("pic_id"),
+                            item.optLong("picId").takeIf { it > 0L }?.toString()
+                        )
                     )
                 )
             }
@@ -191,15 +194,18 @@ class OnlineMusicApi(private val settings: SettingsRepository) {
                         arr.optJSONObject(idx)?.optString("name").orEmpty()
                     }
                 }.orEmpty()
-                val album = track.optJSONObject("al")?.optString("name").orEmpty()
-                val picId = track.optJSONObject("al")?.optLong("picId")?.toString()
+                val album = track.optJSONObject("al")
+                val picId = normalizePicId(
+                    album?.optLong("picId")?.toString(),
+                    track.optLong("picId").takeIf { it > 0L }?.toString()
+                )
                 add(
                     MediaPath.songFromOnlineSearch(
                         source = "netease",
                         trackId = track.optLong("id").toString(),
                         title = track.optString("name"),
                         artist = artists.ifBlank { "未知歌手" },
-                        album = album,
+                        album = album?.optString("name").orEmpty(),
                         picId = picId,
                         durationMs = track.optLong("dt")
                     )
@@ -218,6 +224,14 @@ class OnlineMusicApi(private val settings: SettingsRepository) {
 
     private fun normalize(value: String): String =
         value.lowercase().replace(Regex("\\s+"), "").replace(Regex("[()（）\\[\\]]"), "")
+
+    private fun normalizePicId(vararg candidates: String?): String? {
+        for (candidate in candidates) {
+            val value = candidate?.trim()?.takeIf { it.isNotBlank() && it != "0" } ?: continue
+            return value
+        }
+        return null
+    }
 
     private fun httpGet(url: String, headers: Map<String, String> = emptyMap()): String? {
         val bases = listOfNotNull(

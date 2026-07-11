@@ -46,7 +46,9 @@ class SongMetadataLoader(
 
     fun readLocalLyrics(song: Song): List<LrcLine>? {
         LyricFileStore.read(context, song)?.let { return it }
-        loadOnlineApiLyrics(song)?.lines?.let { return it }
+        LyricFileStore.migrateLegacyCache(context, song, cacheDir)?.let { savedPath ->
+            LyricFileStore.read(context, song.copy(lrcPath = savedPath))?.let { return it }
+        }
         return loadPodcastDescriptionLyrics(song)?.lines
     }
 

@@ -14,7 +14,7 @@ object MediaPath {
 
     fun online(source: String, trackId: String, picId: String? = null, album: String? = null): String {
         val params = buildList<String> {
-            picId?.takeIf { it.isNotBlank() }?.let { add("pic=${encode(it)}") }
+            picId?.takeIf { it.isNotBlank() && it != "0" }?.let { add("pic=${encode(it)}") }
             album?.takeIf { it.isNotBlank() }?.let { add("album=${encode(it)}") }
         }
         val base = "$ONLINE$source/$trackId"

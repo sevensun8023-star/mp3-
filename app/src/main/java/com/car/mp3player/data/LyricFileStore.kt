@@ -6,6 +6,7 @@ import androidx.documentfile.provider.DocumentFile
 import com.car.mp3player.lrc.LrcParser
 import com.car.mp3player.model.LrcLine
 import com.car.mp3player.model.Song
+import com.car.mp3player.util.MediaPath
 import java.io.File
 import java.security.MessageDigest
 
@@ -15,7 +16,16 @@ import java.security.MessageDigest
 object LyricFileStore {
 
     fun read(context: Context, song: Song): List<LrcLine>? {
-        song.lrcPath?.let { path -> readAtPath(context, path)?.let { return it } }
+        song.lrcPath?.let { path ->
+            if (!isMetadataMarker(path)) {
+                readAtPath(context, path)?.let { return it }
+            }
+        }
+        if (MediaPath.isStream(song.path)) {
+            onlineCacheFile(context, song).takeIf { it.exists() }?.let { file ->
+                readAtPath(context, file.absolutePath)?.let { return it }
+            }
+        }
         resolveSidecarPath(context, song)?.let { path ->
             readAtPath(context, path)?.let { return it }
         }
@@ -26,11 +36,21 @@ object LyricFileStore {
         if (song.path.startsWith("content://")) {
             return saveToDocumentTree(context, song, lrcText)
         }
+        if (MediaPath.isStream(song.path)) {
+            return saveToOnlineCache(context, song, lrcText)
+        }
         return saveToFileSidecar(song.path, lrcText)
     }
 
     fun delete(context: Context, song: Song) {
-        song.lrcPath?.let { deleteAtPath(context, it) }
+        song.lrcPath?.let { path ->
+            if (!isMetadataMarker(path)) {
+                deleteAtPath(context, path)
+            }
+        }
+        if (MediaPath.isStream(song.path)) {
+            onlineCacheFile(context, song).delete()
+        }
         resolveSidecarPath(context, song)?.let { deleteAtPath(context, it) }
     }
 
@@ -44,11 +64,27 @@ object LyricFileStore {
     }
 
     fun resolveSidecarPath(context: Context, song: Song): String? {
+        if (MediaPath.isStream(song.path)) return null
         if (song.path.startsWith("content://")) {
             return resolveDocumentSidecar(context, song.path)
         }
         val path = fileSidecarPath(song.path)
         return path.takeIf { File(it).exists() }
+    }
+
+    private fun isMetadataMarker(path: String): Boolean =
+        path.startsWith("pic:") || path.startsWith("favicon:") || path.startsWith("desc:")
+
+    private fun onlineCacheFile(context: Context, song: Song): File =
+        File(File(context.cacheDir, "lyrics"), "${songKey(song)}.lrc")
+
+    private fun saveToOnlineCache(context: Context, song: Song, lrcText: String): String? {
+        val file = onlineCacheFile(context, song)
+        return runCatching {
+            file.parentFile?.mkdirs()
+            file.writeText(lrcText, Charsets.UTF_8)
+            file.absolutePath
+        }.getOrNull()
     }
 
     private fun fileSidecarPath(audioPath: String): String =

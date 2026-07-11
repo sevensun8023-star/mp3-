@@ -16,10 +16,14 @@ class CoverArtFetcher(private val context: Context) {
         fetchEmbeddedOnly(song, cacheFile)?.let { return it }
         if (!allowOnline) return null
         MediaPath.parseOnline(song.path)?.let { parts ->
-            val picId = parts.picId ?: song.lrcPath?.removePrefix("pic:")
-            if (!picId.isNullOrBlank()) {
-                val url = onlineMusicApi?.fetchCoverUrl(parts.source, picId)
-                if (url != null) return downloadToFile(url, cacheFile)
+            val picCandidates = listOfNotNull(
+                parts.picId?.takeIf { isValidPicId(it) },
+                song.lrcPath?.removePrefix("pic:")?.takeIf { isValidPicId(it) },
+                parts.trackId.takeIf { it.isNotBlank() }
+            ).distinct()
+            for (picId in picCandidates) {
+                val url = onlineMusicApi?.fetchCoverUrl(parts.source, picId) ?: continue
+                downloadToFile(url, cacheFile)?.let { return it }
             }
         }
         song.lrcPath?.removePrefix("favicon:")?.takeIf { it.startsWith("http") }?.let { url ->
@@ -81,21 +85,29 @@ class CoverArtFetcher(private val context: Context) {
     }
 
     private fun downloadToFile(url: String, file: File): String? {
-        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+        val connection = (URL(normalizeDownloadUrl(url)).openConnection() as HttpURLConnection).apply {
             connectTimeout = 10000
             readTimeout = 10000
+            setRequestProperty("User-Agent", "MP3Player/4.0 (Android)")
         }
         return try {
+            file.parentFile?.mkdirs()
             connection.inputStream.use { input ->
                 file.outputStream().use { output -> input.copyTo(output) }
             }
-            file.absolutePath
+            file.takeIf { it.length() > 0L }?.absolutePath
         } catch (_: Exception) {
             null
         } finally {
             connection.disconnect()
         }
     }
+
+    private fun normalizeDownloadUrl(url: String): String =
+        if (url.startsWith("http://")) "https://${url.removePrefix("http://")}" else url
+
+    private fun isValidPicId(picId: String): Boolean =
+        picId.isNotBlank() && picId != "0"
 
     private fun encode(value: String): String =
         URLEncoder.encode(value, Charsets.UTF_8.name())

@@ -578,22 +578,26 @@ class MusicPlaybackService : Service() {
                 }
             }
 
-            if (loadLocalLyrics(song).isEmpty()) {
-                val result = metadataLoader.loadLyrics(song) ?: return@launch
-                if (playlist.getOrNull(currentIndex)?.path != song.path) return@launch
-                result.lrcPath?.let { persistSongLrcPath(song.path, it) }
-                currentLines = result.lines
-                withContext(Dispatchers.Main) {
-                    val p = exoPlayer
-                    PlaybackStateHolder.update(
-                        song,
-                        p?.isPlaying == true,
-                        p?.currentPosition ?: 0L,
-                        currentLines,
-                        p?.duration?.coerceAtLeast(0L) ?: PlaybackStateHolder.durationMs
-                    )
-                    LyricsOverlayService.updateLyrics(applicationContext, PlaybackStateHolder.lyricState)
-                }
+            val localLines = metadataLoader.readLocalLyrics(song)
+            val result = if (!localLines.isNullOrEmpty()) {
+                SongMetadataLoader.LyricLoadResult(localLines, song.lrcPath)
+            } else {
+                metadataLoader.loadLyrics(song)
+            } ?: return@launch
+
+            if (playlist.getOrNull(currentIndex)?.path != song.path) return@launch
+            result.lrcPath?.let { persistSongLrcPath(song.path, it) }
+            currentLines = result.lines
+            withContext(Dispatchers.Main) {
+                val p = exoPlayer
+                PlaybackStateHolder.update(
+                    song,
+                    p?.isPlaying == true,
+                    p?.currentPosition ?: 0L,
+                    currentLines,
+                    p?.duration?.coerceAtLeast(0L) ?: PlaybackStateHolder.durationMs
+                )
+                LyricsOverlayService.updateLyrics(applicationContext, PlaybackStateHolder.lyricState)
             }
         }
     }
