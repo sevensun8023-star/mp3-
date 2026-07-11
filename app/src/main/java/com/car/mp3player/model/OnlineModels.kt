@@ -20,6 +20,14 @@ data class OnlinePlaylistSummary(
     val subscribedCount: Long
 )
 
+data class PlaylistLoadResult(
+    val summary: OnlinePlaylistSummary?,
+    val songs: List<Song>,
+    val errorMessage: String? = null
+) {
+    val ok: Boolean get() = songs.isNotEmpty()
+}
+
 data class OnlineTrackRef(
     val localId: String,
     val title: String,
