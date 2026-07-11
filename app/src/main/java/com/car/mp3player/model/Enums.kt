@@ -13,17 +13,23 @@ enum class ThemeMode {
 
 enum class LibraryKind {
     MUSIC,
+    ONLINE,
+    RADIO,
     PODCAST
 }
 
 enum class PlaylistViewMode {
     ALL_SONGS,
-    BY_ARTIST,
-    PODCAST
+    BY_ARTIST
 }
 
 enum class PlaylistSortOrder {
     TITLE,
     DURATION_ASC,
     DURATION_DESC
+}
+
+enum class OnlineApiType {
+    GD_STUDIO,
+    NETEASE_ENHANCED
 }

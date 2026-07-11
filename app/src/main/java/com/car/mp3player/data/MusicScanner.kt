@@ -12,9 +12,7 @@ import java.io.File
 class MusicScanner(
     private val context: Context,
     private val customPaths: List<String> = emptyList(),
-    private val treeUris: List<String> = emptyList(),
-    private val excludePaths: List<String> = emptyList(),
-    private val folderArtist: String? = null
+    private val treeUris: List<String> = emptyList()
 ) {
     private val audioExtensions = setOf("mp3", "flac", "m4a", "wav", "ogg", "aac")
 
@@ -25,16 +23,8 @@ class MusicScanner(
             if (!merged.containsKey(song.path)) merged[song.path] = song
         }
         scanDocumentTrees().forEach { merged[it.path] = it }
-        return merged.values
-            .filter { !isExcluded(it.path) }
-            .sortedBy { it.title.lowercase() }
+        return merged.values.sortedBy { it.title.lowercase() }
     }
-
-    fun scanFoldersOnly(): List<Song> =
-        scanDirectories(resolvePaths()).sortedBy { it.title.lowercase() }
-
-    private fun isExcluded(path: String): Boolean =
-        PodcastPaths.isUnderPodcast(path, excludePaths)
 
     private fun resolvePaths(): List<File> {
         val paths = mutableListOf<File>()
@@ -99,7 +89,7 @@ class MusicScanner(
                         Song(
                             id = id++,
                             title = file.nameWithoutExtension,
-                            artist = folderArtist ?: file.parentFile?.name ?: "本地音乐",
+                            artist = file.parentFile?.name ?: "本地音乐",
                             path = file.absolutePath,
                             lrcPath = findLrc(file.absolutePath),
                             durationMs = readDurationMs(file.absolutePath)

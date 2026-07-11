@@ -23,7 +23,9 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaStyleNotificationHelper
+import com.car.mp3player.data.OnlineMusicApi
 import com.car.mp3player.data.PlaylistCache
+import com.car.mp3player.data.RssFeedRepository
 import com.car.mp3player.data.SettingsRepository
 import com.car.mp3player.data.SongMetadataLoader
 import com.car.mp3player.lrc.LrcParser
@@ -32,6 +34,7 @@ import com.car.mp3player.model.PlaybackMode
 import com.car.mp3player.model.Song
 import com.car.mp3player.playback.CarPlaylistPlayer
 import com.car.mp3player.playback.PlaybackStateHolder
+import com.car.mp3player.util.MediaPath
 import java.io.File
 import kotlin.random.Random
 import kotlinx.coroutines.CancellationException
@@ -60,9 +63,13 @@ class MusicPlaybackService : Service() {
             applicationContext,
             cacheDir,
             settings,
-            coverFetcher = com.car.mp3player.data.CoverArtFetcher(this)
+            coverFetcher = com.car.mp3player.data.CoverArtFetcher(this),
+            onlineMusicApi = OnlineMusicApi(settings),
+            rssFeedRepository = RssFeedRepository(applicationContext, settings)
         )
     }
+    private val onlineMusicApi by lazy { OnlineMusicApi(settings) }
+    private val rssRepository by lazy { RssFeedRepository(this, settings) }
     private val audioManager by lazy { getSystemService(AUDIO_SERVICE) as AudioManager }
     private var audioFocusRequest: AudioFocusRequest? = null
     private var hasAudioFocus = false
@@ -120,6 +127,7 @@ class MusicPlaybackService : Service() {
 
                     override fun onPlayerError(error: PlaybackException) {
                         android.util.Log.e(TAG, "ExoPlayer error", error)
+                        handler.post { handlePlaybackFailure() }
                     }
                 })
             }
@@ -241,11 +249,9 @@ class MusicPlaybackService : Service() {
 
     private fun resolvePlaylist(intent: Intent?, library: LibraryKind? = null): List<Song> {
         PlaybackStateHolder.songs.takeIf { it.isNotEmpty() }?.let { return it }
-        val resolvedLibrary = library ?: settings.inferLibrary(settings.lastSongPath)
+        val resolvedLibrary = library ?: settings.lastActiveLibrary
         PlaylistCache.loadQueue(this, resolvedLibrary).takeIf { it.isNotEmpty() }?.let { return it }
-        if (resolvedLibrary == LibraryKind.PODCAST) {
-            PlaylistCache.loadPodcast(this).takeIf { it.isNotEmpty() }?.let { return it }
-        } else {
+        if (resolvedLibrary == LibraryKind.MUSIC) {
             PlaylistCache.load(this).takeIf { it.isNotEmpty() }?.let { return it }
         }
         intent?.let { readPlaylist(it) }?.map { it.toSong() }?.takeIf { it.isNotEmpty() }?.let { return it }
@@ -253,7 +259,7 @@ class MusicPlaybackService : Service() {
     }
 
     private fun Intent.libraryExtra(): LibraryKind {
-        val raw = getStringExtra(EXTRA_LIBRARY) ?: return settings.inferLibrary(settings.lastSongPath)
+        val raw = getStringExtra(EXTRA_LIBRARY) ?: return settings.lastActiveLibrary
         return runCatching { LibraryKind.valueOf(raw) }.getOrDefault(LibraryKind.MUSIC)
     }
 
@@ -265,10 +271,11 @@ class MusicPlaybackService : Service() {
     ) {
         if (list.isEmpty()) return
         if (playlist.isEmpty()) {
-            val path = settings.lastSongPath
+            val library = PlaybackStateHolder.activeLibrary
+            val path = settings.lastSongPath(library)
             val index = path?.let { p -> list.indexOfFirst { it.path == p } }?.takeIf { it >= 0 } ?: 0
-            val seek = if (resume) settings.lastPositionMs.coerceAtLeast(0L) else 0L
-            startPlaylist(list, index, seek)
+            val seek = if (resume) settings.lastPositionMs(library).coerceAtLeast(0L) else 0L
+            startPlaylist(list, index, seek, library)
             if (shouldPlayNext) playNext()
             else if (shouldPlayPrevious) playPrevious()
             return
@@ -319,10 +326,11 @@ class MusicPlaybackService : Service() {
 
     private fun resumeLast() {
         if (playlist.isEmpty()) return
-        val path = settings.lastSongPath ?: return
+        val library = PlaybackStateHolder.activeLibrary
+        val path = settings.lastSongPath(library) ?: return
         val index = playlist.indexOfFirst { it.path == path }
         if (index >= 0) {
-            playSongAt(index, settings.lastPositionMs.coerceAtLeast(0L))
+            playSongAt(index, settings.lastPositionMs(library).coerceAtLeast(0L))
         }
     }
 
@@ -335,7 +343,8 @@ class MusicPlaybackService : Service() {
     private fun startPlaylist(list: List<Song>, index: Int, seekMs: Long = 0L, library: LibraryKind? = null) {
         playlist = list
         currentIndex = index.coerceIn(0, (list.size - 1).coerceAtLeast(0))
-        val resolvedLibrary = library ?: settings.inferLibrary(list.getOrNull(currentIndex)?.path)
+        val resolvedLibrary = library ?: MediaPath.libraryKind(list.getOrNull(currentIndex)?.path)
+        settings.lastActiveLibrary = resolvedLibrary
         when {
             PlaybackStateHolder.songs.isEmpty() ->
                 PlaybackStateHolder.setPlaylist(list, currentIndex, resolvedLibrary)
@@ -351,16 +360,35 @@ class MusicPlaybackService : Service() {
     private fun playSongAt(index: Int, seekMs: Long = 0L) {
         if (index !in playlist.indices) return
         val song = playlist[index]
-        if (!songFileReadable(song)) {
-            android.util.Log.e(TAG, "song not readable: ${song.path}")
+        if (MediaPath.isStream(song.path)) {
+            metadataScope.launch {
+                val streamUrl = resolveStreamUrl(song)
+                if (streamUrl.isNullOrBlank()) {
+                    handler.post { handleUnplayableSong(index) }
+                    return@launch
+                }
+                handler.post { startPlaybackResolved(song, index, seekMs, streamUrl) }
+            }
             return
         }
+        if (!songFileReadable(song)) {
+            android.util.Log.e(TAG, "song not readable: ${song.path}")
+            handleUnplayableSong(index)
+            return
+        }
+        startPlaybackResolved(song, index, seekMs, null)
+    }
+
+    private fun startPlaybackResolved(song: Song, index: Int, seekMs: Long, streamUrl: String?) {
         runCatching {
             acquireAudioFocus()
             currentIndex = index
             val player = exoPlayer ?: return@runCatching
-
-            val item = buildMediaItem(song)
+            val item = if (streamUrl != null) {
+                buildMediaItem(song).buildUpon().setUri(streamUrl).build()
+            } else {
+                buildMediaItem(song)
+            }
             player.setMediaItem(item, seekMs)
             player.prepare()
             player.play()
@@ -384,11 +412,43 @@ class MusicPlaybackService : Service() {
             loadMetadataAsync(song)
         }.onFailure {
             android.util.Log.e(TAG, "playSongAt failed", it)
+            handleUnplayableSong(index)
         }
     }
 
+    private suspend fun resolveStreamUrl(song: Song): String? {
+        MediaPath.parseOnline(song.path)?.let { parts ->
+            return onlineMusicApi.resolvePlayUrl(parts.source, parts.trackId)?.url
+        }
+        MediaPath.parseRadioStreamUrl(song.path)?.let { return it }
+        MediaPath.parsePodcastStreamUrl(song.path)?.let { return it }
+        if (song.path.startsWith("http")) return song.path
+        return null
+    }
+
+    private fun handleUnplayableSong(index: Int) {
+        if (settings.skipUnplayableVip && PlaybackStateHolder.activeLibrary == LibraryKind.ONLINE) {
+            playNextSkipping(index)
+        }
+    }
+
+    private fun handlePlaybackFailure() {
+        if (settings.skipUnplayableVip) {
+            playNext()
+        }
+    }
+
+    private fun playNextSkipping(fromIndex: Int) {
+        if (playlist.isEmpty()) return
+        val next = (fromIndex + 1) % playlist.size
+        if (next == fromIndex) return
+        playSongAt(next)
+    }
+
     private fun songFileReadable(song: Song): Boolean {
+        if (MediaPath.isStream(song.path)) return true
         if (song.path.startsWith("content://")) return true
+        if (song.path.startsWith("http")) return true
         return runCatching { File(song.path).isFile }.getOrDefault(false)
     }
 
@@ -536,7 +596,14 @@ class MusicPlaybackService : Service() {
     }
 
     private fun songUri(song: Song): Uri {
-        return if (song.path.startsWith("content://")) Uri.parse(song.path) else Uri.fromFile(File(song.path))
+        return when {
+            song.path.startsWith("http") -> Uri.parse(song.path)
+            MediaPath.isOnline(song.path) -> Uri.parse("about:blank")
+            MediaPath.isRadio(song.path) -> Uri.parse(MediaPath.parseRadioStreamUrl(song.path).orEmpty())
+            MediaPath.isPodcast(song.path) -> Uri.parse(MediaPath.parsePodcastStreamUrl(song.path).orEmpty())
+            song.path.startsWith("content://") -> Uri.parse(song.path)
+            else -> Uri.fromFile(File(song.path))
+        }
     }
 
     private fun togglePlayPause() {
@@ -654,8 +721,8 @@ class MusicPlaybackService : Service() {
 
     private fun persistProgress(song: Song?, positionMs: Long) {
         if (song == null) return
-        settings.lastSongPath = song.path
-        settings.lastPositionMs = positionMs
+        val library = PlaybackStateHolder.activeLibrary
+        settings.setLastSong(library, song.path, positionMs)
     }
 
     override fun onDestroy() {

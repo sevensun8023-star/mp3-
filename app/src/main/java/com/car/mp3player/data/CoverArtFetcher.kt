@@ -4,6 +4,7 @@ import android.content.Context
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import com.car.mp3player.model.Song
+import com.car.mp3player.util.MediaPath
 import org.json.JSONObject
 import java.io.File
 import java.net.HttpURLConnection
@@ -11,9 +12,19 @@ import java.net.URL
 import java.net.URLEncoder
 
 class CoverArtFetcher(private val context: Context) {
-    fun fetch(song: Song, cacheFile: File, allowOnline: Boolean = true): String? {
+    fun fetch(song: Song, cacheFile: File, allowOnline: Boolean = true, onlineMusicApi: OnlineMusicApi? = null): String? {
         fetchEmbeddedOnly(song, cacheFile)?.let { return it }
         if (!allowOnline) return null
+        MediaPath.parseOnline(song.path)?.let { parts ->
+            val picId = parts.picId ?: song.lrcPath?.removePrefix("pic:")
+            if (!picId.isNullOrBlank()) {
+                val url = onlineMusicApi?.fetchCoverUrl(parts.source, picId)
+                if (url != null) return downloadToFile(url, cacheFile)
+            }
+        }
+        song.lrcPath?.removePrefix("favicon:")?.takeIf { it.startsWith("http") }?.let { url ->
+            return downloadToFile(url, cacheFile)
+        }
         val url = searchItunesArtUrl(song.title, song.artist) ?: return null
         return downloadToFile(url, cacheFile)
     }
@@ -28,6 +39,7 @@ class CoverArtFetcher(private val context: Context) {
     }
 
     private fun extractEmbedded(song: Song): ByteArray? {
+        if (com.car.mp3player.util.MediaPath.isStream(song.path)) return null
         val retriever = MediaMetadataRetriever()
         return try {
             if (song.path.startsWith("content://")) {

@@ -17,7 +17,6 @@ import androidx.fragment.app.Fragment
 import com.car.mp3player.ClusterLyricService
 import com.car.mp3player.LyricsOverlayService
 import com.car.mp3player.R
-import com.car.mp3player.data.PodcastPaths
 import com.car.mp3player.data.ScanPathHelper
 import com.car.mp3player.data.SettingsRepository
 import com.car.mp3player.databinding.FragmentSettingsBinding
@@ -27,6 +26,8 @@ import com.car.mp3player.model.LyricThemePreset
 import com.car.mp3player.model.ThemeMode
 import com.google.android.material.chip.Chip
 import com.google.android.material.chip.ChipGroup
+import com.google.android.material.textfield.TextInputEditText
+import com.google.android.material.textfield.TextInputLayout
 import com.google.android.material.slider.Slider
 import com.google.android.material.switchmaterial.SwitchMaterial
 
@@ -98,22 +99,21 @@ class SettingsFragment : Fragment() {
         setupLyricThemeChips()
         setupLyricFontChips()
         refreshScanPathsUi()
-        refreshPodcastPathsUi()
+        setupOnlineSettings()
 
         binding.btnPickFolder.setOnClickListener { pickFolder.launch(null) }
         binding.btnAddMusic.setOnClickListener { addPresetPath("内置 Music") }
         binding.btnAddDownload.setOnClickListener { addPresetPath("下载目录") }
-        binding.btnAddPodcast.setOnClickListener { addPodcastFolder() }
 
         binding.btnScan.setOnClickListener {
             binding.btnScan.isEnabled = false
             binding.btnScan.text = getString(R.string.scanning)
-            (activity as? MainHost)?.scanMusic { musicCount, podcastCount ->
+            (activity as? MainHost)?.scanMusic { musicCount ->
                 binding.btnScan.isEnabled = true
                 binding.btnScan.text = getString(R.string.settings_scan)
                 Toast.makeText(
                     requireContext(),
-                    getString(R.string.scan_done_dual, musicCount, podcastCount),
+                    getString(R.string.scan_done, musicCount),
                     Toast.LENGTH_SHORT
                 ).show()
             }
@@ -385,26 +385,72 @@ class SettingsFragment : Fragment() {
         (activity as? MainHost)?.notifyLyricStyleChanged()
     }
 
-    private fun addPodcastFolder() {
-        PodcastPaths.defaultFolders().forEach { settings.addPodcastPath(it) }
-        PodcastPaths.ensureDefaultFolder()
-        refreshPodcastPathsUi()
-        Toast.makeText(requireContext(), getString(R.string.folder_added), Toast.LENGTH_SHORT).show()
-    }
+    private fun setupOnlineSettings() {
+        val container = binding.onlineSettingsContainer
+        container.removeAllViews()
+        val title = TextView(requireContext()).apply {
+            text = getString(R.string.settings_online)
+            setTextColor(ContextCompat.getColor(requireContext(), R.color.text_primary))
+            textSize = 18f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+        }
+        container.addView(title)
 
-    private fun refreshPodcastPathsUi() {
-        binding.podcastPathsChipGroup.removeAllViews()
-        settings.podcastPaths().forEach { path ->
-            val chip = Chip(requireContext()).apply {
-                text = ScanPathHelper.displayName(requireContext(), path)
-                isCloseIconVisible = true
-                setOnCloseIconClickListener {
-                    settings.removePodcastPath(path)
-                    refreshPodcastPathsUi()
+        fun addField(hint: String, value: String, onSave: (String) -> Unit): TextInputEditText {
+            val inputLayout = TextInputLayout(requireContext()).apply {
+                this.hint = hint
+                boxBackgroundMode = TextInputLayout.BOX_BACKGROUND_OUTLINE
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { topMargin = 12 }
+            }
+            val edit = TextInputEditText(requireContext()).apply {
+                setText(value)
+                setTextColor(ContextCompat.getColor(requireContext(), R.color.text_primary))
+                setOnFocusChangeListener { _, hasFocus ->
+                    if (!hasFocus) onSave(text?.toString().orEmpty())
                 }
             }
-            binding.podcastPathsChipGroup.addView(chip)
+            inputLayout.addView(edit)
+            container.addView(inputLayout)
+            return edit
         }
+
+        addField(getString(R.string.online_api_primary), settings.onlineMusicApiUrl) {
+            settings.onlineMusicApiUrl = it
+        }
+        addField(getString(R.string.online_api_backup), settings.onlineMusicApiBackup) {
+            settings.onlineMusicApiBackup = it
+        }
+        addField(getString(R.string.radio_api_url), settings.radioBrowserApiUrl) {
+            settings.radioBrowserApiUrl = it
+        }
+        addField(getString(R.string.podcast_rss_urls), settings.podcastRssText) {
+            settings.podcastRssText = it
+        }
+
+        val skipVip = SwitchMaterial(requireContext()).apply {
+            text = getString(R.string.skip_vip_songs)
+            isChecked = settings.skipUnplayableVip
+            setOnCheckedChangeListener { _, checked -> settings.skipUnplayableVip = checked }
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = 16 }
+        }
+        container.addView(skipVip)
+
+        val podcastDesc = SwitchMaterial(requireContext()).apply {
+            text = getString(R.string.podcast_show_desc)
+            isChecked = settings.podcastShowDescription
+            setOnCheckedChangeListener { _, checked -> settings.podcastShowDescription = checked }
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = 8 }
+        }
+        container.addView(podcastDesc)
     }
 
     private fun addPresetPath(label: String) {

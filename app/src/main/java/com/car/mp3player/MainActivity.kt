@@ -19,6 +19,7 @@ import com.car.mp3player.model.LibraryKind
 import com.car.mp3player.model.Song
 import com.car.mp3player.playback.PlaybackStateHolder
 import com.car.mp3player.ui.AppThemeManager
+import com.car.mp3player.ui.ImmersiveHelper
 import com.car.mp3player.ui.MainHost
 import com.car.mp3player.ui.MainPagerAdapter
 import com.car.mp3player.ui.PlayerFragment
@@ -33,7 +34,6 @@ class MainActivity : AppCompatActivity(), MainHost {
     private lateinit var binding: ActivityMainBinding
     private lateinit var settings: SettingsRepository
     private var musicSongs: List<Song> = emptyList()
-    private var podcastSongs: List<Song> = emptyList()
 
     private val storagePermission = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -44,6 +44,7 @@ class MainActivity : AppCompatActivity(), MainHost {
         settings.applyTheme()
         setTheme(settings.appTheme().styleRes)
         super.onCreate(savedInstanceState)
+        ImmersiveHelper.apply(this)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
@@ -79,10 +80,16 @@ class MainActivity : AppCompatActivity(), MainHost {
 
     override fun onResume() {
         super.onResume()
+        ImmersiveHelper.apply(this)
         applyAppTheme()
         if (binding.viewPager.currentItem == 1) {
             (supportFragmentManager.findFragmentByTag("f1") as? PlayerFragment)?.syncBottomNavTheme()
         }
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) ImmersiveHelper.apply(this)
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
@@ -113,19 +120,20 @@ class MainActivity : AppCompatActivity(), MainHost {
 
     private fun restoreCachedLibraries(resumePlayback: Boolean = true) {
         musicSongs = PlaybackBootstrap.loadCachedMusic(this)
-        podcastSongs = PlaybackBootstrap.loadCachedPodcast(this)
         binding.root.post {
             refreshPlaylistFragment()
             if (!resumePlayback || PlaybackStateHolder.isPlaying) return@post
-            val library = settings.inferLibrary(settings.lastSongPath)
-            val resumeList = when (library) {
-                LibraryKind.PODCAST -> podcastSongs
-                LibraryKind.MUSIC -> musicSongs
-            }
+            val library = settings.lastActiveLibrary
+            val resumeList = resolveResumeList(library)
             if (resumeList.isNotEmpty()) {
-                PlaybackBootstrap.resumeIfNeeded(this, resumeList, settings)
+                PlaybackBootstrap.resumeIfNeeded(this, resumeList, settings, library)
             }
         }
+    }
+
+    private fun resolveResumeList(library: LibraryKind): List<Song> = when (library) {
+        LibraryKind.MUSIC -> musicSongs
+        else -> PlaylistCache.loadQueue(this, library).ifEmpty { musicSongs }
     }
 
     override fun playSongAt(index: Int) {
@@ -134,6 +142,7 @@ class MainActivity : AppCompatActivity(), MainHost {
 
     override fun playSongSubset(subset: List<Song>, index: Int, library: LibraryKind) {
         if (subset.isEmpty() || index !in subset.indices) return
+        settings.lastActiveLibrary = library
         PlaybackStateHolder.setActiveLibrary(library)
         if (PlaybackStateHolder.songs === subset) {
             PlaybackStateHolder.setCurrentIndex(index)
@@ -164,31 +173,27 @@ class MainActivity : AppCompatActivity(), MainHost {
         binding.bottomNav.menu.getItem(index).isChecked = true
     }
 
-    override fun scanMusic(onDone: ((Int, Int) -> Unit)?) {
+    override fun scanMusic(onDone: ((Int) -> Unit)?) {
         CoroutineScope(Dispatchers.Main).launch {
-            val result = withContext(Dispatchers.IO) {
-                PlaybackBootstrap.scanAllLibraries(this@MainActivity, settings)
+            val musicCount = withContext(Dispatchers.IO) {
+                PlaybackBootstrap.scanMusicLibrary(this@MainActivity, settings).also { musicSongs = it }
             }
-            musicSongs = result.music
-            podcastSongs = result.podcast
             if (PlaybackStateHolder.activeLibrary == LibraryKind.MUSIC && musicSongs.isNotEmpty()) {
                 PlaybackStateHolder.setPlaylist(musicSongs, library = LibraryKind.MUSIC)
             }
             refreshPlaylistFragment()
             if (!PlaybackStateHolder.isPlaying) {
-                val library = settings.inferLibrary(settings.lastSongPath)
-                val resumeList = if (library == LibraryKind.PODCAST) podcastSongs else musicSongs
+                val library = settings.lastActiveLibrary
+                val resumeList = resolveResumeList(library)
                 if (resumeList.isNotEmpty()) {
-                    PlaybackBootstrap.resumeIfNeeded(this@MainActivity, resumeList, settings)
+                    PlaybackBootstrap.resumeIfNeeded(this@MainActivity, resumeList, settings, library)
                 }
             }
-            onDone?.invoke(musicSongs.size, podcastSongs.size)
+            onDone?.invoke(musicCount)
         }
     }
 
     override fun allSongs(): List<Song> = musicSongs
-
-    override fun podcastSongs(): List<Song> = podcastSongs
 
     override fun refreshAppTheme() {
         applyAppTheme()
@@ -210,7 +215,7 @@ class MainActivity : AppCompatActivity(), MainHost {
         binding.root.setBackgroundColor(palette.background)
         AppThemeManager.applyBottomNav(binding.bottomNav, palette)
         window.navigationBarColor = palette.bottomNavBg
-        window.statusBarColor = palette.background
+        window.statusBarColor = android.graphics.Color.TRANSPARENT
     }
 
     private fun requestPermissionsAndScan() {
@@ -220,13 +225,9 @@ class MainActivity : AppCompatActivity(), MainHost {
         if (needed.isNotEmpty()) {
             storagePermission.launch(needed.toTypedArray())
         } else {
-            scanMusic { musicCount, podcastCount ->
-                if (musicCount > 0 || podcastCount > 0) {
-                    Toast.makeText(
-                        this,
-                        getString(R.string.scan_done_dual, musicCount, podcastCount),
-                        Toast.LENGTH_SHORT
-                    ).show()
+            scanMusic { count ->
+                if (count > 0) {
+                    Toast.makeText(this, getString(R.string.scan_done, count), Toast.LENGTH_SHORT).show()
                 }
             }
         }

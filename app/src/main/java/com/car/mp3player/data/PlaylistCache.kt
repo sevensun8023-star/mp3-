@@ -9,20 +9,16 @@ import java.io.File
 
 object PlaylistCache {
     private const val CACHE_FILE = "playlist_cache.json"
-    private const val PODCAST_CACHE_FILE = "podcast_cache.json"
     private const val QUEUE_FILE = "play_queue.json"
     private const val MUSIC_QUEUE_FILE = "play_queue_music.json"
+    private const val ONLINE_QUEUE_FILE = "play_queue_online.json"
+    private const val RADIO_QUEUE_FILE = "play_queue_radio.json"
     private const val PODCAST_QUEUE_FILE = "play_queue_podcast.json"
 
     fun save(context: Context, songs: List<Song>) = writeSongs(context, CACHE_FILE, songs)
 
     fun load(context: Context): List<Song> = readSongs(context, CACHE_FILE)
 
-    fun savePodcast(context: Context, songs: List<Song>) = writeSongs(context, PODCAST_CACHE_FILE, songs)
-
-    fun loadPodcast(context: Context): List<Song> = readSongs(context, PODCAST_CACHE_FILE)
-
-    /** 当前正在播放的队列（可能是歌手子集），避免通过 Intent 传递大列表导致闪退 */
     fun saveQueue(context: Context, songs: List<Song>, library: LibraryKind = LibraryKind.MUSIC) {
         writeSongs(context, queueFile(library), songs)
         writeSongs(context, QUEUE_FILE, songs)
@@ -36,6 +32,8 @@ object PlaylistCache {
 
     private fun queueFile(library: LibraryKind): String = when (library) {
         LibraryKind.MUSIC -> MUSIC_QUEUE_FILE
+        LibraryKind.ONLINE -> ONLINE_QUEUE_FILE
+        LibraryKind.RADIO -> RADIO_QUEUE_FILE
         LibraryKind.PODCAST -> PODCAST_QUEUE_FILE
     }
 

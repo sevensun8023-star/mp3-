@@ -1,8 +1,10 @@
 package com.car.mp3player.data
 
 import android.content.Context
+import com.car.mp3player.lrc.LrcParser
 import com.car.mp3player.model.LrcLine
 import com.car.mp3player.model.Song
+import com.car.mp3player.util.MediaPath
 import java.io.File
 
 class SongMetadataLoader(
@@ -10,7 +12,9 @@ class SongMetadataLoader(
     private val cacheDir: File,
     private val settings: SettingsRepository,
     private val lyricFetcher: OnlineLyricFetcher = OnlineLyricFetcher(),
-    private val coverFetcher: CoverArtFetcher
+    private val coverFetcher: CoverArtFetcher,
+    private val onlineMusicApi: OnlineMusicApi? = null,
+    private val rssFeedRepository: RssFeedRepository? = null
 ) {
     fun loadLyrics(song: Song, forceOnline: Boolean = false): LyricLoadResult? {
         val title = settings.lyricSearchTitle(song.path) ?: song.title
@@ -26,6 +30,8 @@ class SongMetadataLoader(
                     return LyricLoadResult(lines, savedPath)
                 }
             }
+            loadOnlineApiLyrics(song)?.let { return it }
+            loadPodcastDescriptionLyrics(song)?.let { return it }
         } else {
             LyricFileStore.delete(context, song)
             LyricFileStore.deleteLegacyCache(cacheDir, song)
@@ -38,12 +44,35 @@ class SongMetadataLoader(
         return LyricLoadResult(fetched, savedPath)
     }
 
-    fun readLocalLyrics(song: Song): List<LrcLine>? = LyricFileStore.read(context, song)
+    fun readLocalLyrics(song: Song): List<LrcLine>? {
+        LyricFileStore.read(context, song)?.let { return it }
+        loadOnlineApiLyrics(song)?.lines?.let { return it }
+        return loadPodcastDescriptionLyrics(song)?.lines
+    }
 
     fun loadCover(song: Song): String? {
         val cache = coverCacheFile(song)
         if (cache.exists() && cache.length() > 0) return cache.absolutePath
-        return coverFetcher.fetch(song, cache, allowOnline = settings.onlineCoverEnabled)
+        return coverFetcher.fetch(song, cache, allowOnline = settings.onlineCoverEnabled, onlineMusicApi = onlineMusicApi)
+    }
+
+    private fun loadOnlineApiLyrics(song: Song): LyricLoadResult? {
+        if (!settings.onlineLyricsEnabled) return null
+        val api = onlineMusicApi ?: return null
+        val parts = MediaPath.parseOnline(song.path) ?: return null
+        val lyricText = api.fetchLyric(parts.source, parts.trackId) ?: return null
+        val lines = LrcParser.parseContent(lyricText).ifEmpty { LrcParser.fromPlainText(lyricText) }
+        if (lines.isEmpty()) return null
+        val savedPath = LyricFileStore.save(context, song, lyricText)
+        return LyricLoadResult(lines, savedPath)
+    }
+
+    private fun loadPodcastDescriptionLyrics(song: Song): LyricLoadResult? {
+        if (!settings.podcastShowDescription || !MediaPath.isPodcast(song.path)) return null
+        val repo = rssFeedRepository ?: return null
+        val description = repo.episodeDescription(song.path)?.takeIf { it.isNotBlank() } ?: return null
+        val lines = LrcParser.fromPlainText(description)
+        return LyricLoadResult(lines, null)
     }
 
     private fun buildLrcText(lines: List<LrcLine>): String {

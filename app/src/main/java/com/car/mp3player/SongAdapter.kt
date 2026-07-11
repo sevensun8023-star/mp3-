@@ -11,7 +11,8 @@ import com.car.mp3player.model.Song
 import com.car.mp3player.util.TimeFormat
 
 class SongAdapter(
-    private val onClick: (Song, Int) -> Unit
+    private val onClick: (Song, Int) -> Unit,
+    private val onLongClick: ((Song, Int) -> Unit)? = null
 ) : ListAdapter<Song, SongAdapter.SongViewHolder>(DIFF) {
 
     var playingPath: String? = null
@@ -57,6 +58,10 @@ class SongAdapter(
             binding.lrcBadge.visibility = if (song.lrcPath != null) android.view.View.VISIBLE else android.view.View.GONE
             bindPlayingState(song)
             binding.root.setOnClickListener { onClick(song, position) }
+            binding.root.setOnLongClickListener {
+                onLongClick?.invoke(song, position)
+                onLongClick != null
+            }
         }
 
         fun bindPlayingState(song: Song) {

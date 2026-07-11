@@ -1,34 +1,20 @@
 package com.car.mp3player.ui
 
 import android.os.Bundle
-import android.text.Editable
-import android.text.TextWatcher
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.fragment.app.Fragment
-import androidx.recyclerview.widget.LinearLayoutManager
-import com.car.mp3player.ArtistAdapter
+import androidx.viewpager2.adapter.FragmentStateAdapter
 import com.car.mp3player.R
-import com.car.mp3player.SongAdapter
 import com.car.mp3player.data.SettingsRepository
 import com.car.mp3player.databinding.FragmentPlaylistBinding
-import com.car.mp3player.model.ArtistGroup
-import com.car.mp3player.model.PlaylistSortOrder
-import com.car.mp3player.model.PlaylistViewMode
-import com.car.mp3player.model.Song
-import com.car.mp3player.playback.PlaybackStateHolder
+import com.google.android.material.tabs.TabLayoutMediator
 
-class PlaylistFragment : Fragment(), PlaybackStateHolder.Listener {
+class PlaylistFragment : Fragment() {
     private var _binding: FragmentPlaylistBinding? = null
     private val binding get() = _binding!!
-    private lateinit var songAdapter: SongAdapter
-    private lateinit var artistAdapter: ArtistAdapter
-    private var query = ""
-    private var viewMode = PlaylistViewMode.ALL_SONGS
-    private var sortOrder = PlaylistSortOrder.TITLE
-    private var selectedArtist: String? = null
-    private var lastClickMs = 0L
+    private var tabMediator: TabLayoutMediator? = null
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentPlaylistBinding.inflate(inflater, container, false)
@@ -39,197 +25,42 @@ class PlaylistFragment : Fragment(), PlaybackStateHolder.Listener {
         super.onViewCreated(view, savedInstanceState)
         val settings = SettingsRepository(requireContext())
         AppThemeManager.applyFragmentRoot(binding.root, AppThemeManager.palette(requireContext(), settings))
-        songAdapter = SongAdapter { song, indexInList ->
-            val now = System.currentTimeMillis()
-            if (now - lastClickMs < 280) return@SongAdapter
-            lastClickMs = now
-            (activity as? MainHost)?.switchToTab(1)
-            val visibleSongs = currentVisibleSongs()
-            val playIndex = visibleSongs.indexOfFirst { it.path == song.path }.takeIf { it >= 0 } ?: indexInList
-            val library = if (viewMode == PlaylistViewMode.PODCAST) {
-                com.car.mp3player.model.LibraryKind.PODCAST
-            } else {
-                com.car.mp3player.model.LibraryKind.MUSIC
+        binding.sectionPager.adapter = PlaylistSectionAdapter(this)
+        binding.sectionPager.offscreenPageLimit = 4
+        tabMediator = TabLayoutMediator(binding.sectionTabs, binding.sectionPager) { tab, position ->
+            tab.text = when (position) {
+                0 -> getString(R.string.section_local)
+                1 -> getString(R.string.section_online)
+                2 -> getString(R.string.section_radio)
+                else -> getString(R.string.section_podcast)
             }
-            (activity as? MainHost)?.playSongSubset(visibleSongs, playIndex, library)
-        }
-        artistAdapter = ArtistAdapter { group ->
-            selectedArtist = group.name
-            updateToolbar()
-            applyFilter()
-        }
-
-        binding.songList.layoutManager = LinearLayoutManager(requireContext())
-        binding.songList.adapter = songAdapter
-        binding.songList.setHasFixedSize(true)
-
-        binding.searchInput.addTextChangedListener(object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                query = s?.toString().orEmpty()
-                applyFilter()
-            }
-            override fun afterTextChanged(s: Editable?) {}
-        })
-
-        binding.chipAllSongs.setOnClickListener {
-            selectViewMode(PlaylistViewMode.ALL_SONGS)
-        }
-        binding.chipArtists.setOnClickListener {
-            selectViewMode(PlaylistViewMode.BY_ARTIST)
-        }
-        binding.chipPodcast.setOnClickListener {
-            selectViewMode(PlaylistViewMode.PODCAST)
-        }
-
-        binding.sortGroup.setOnCheckedChangeListener { _, checkedId ->
-            sortOrder = when (checkedId) {
-                R.id.sortDurationAsc -> PlaylistSortOrder.DURATION_ASC
-                R.id.sortDurationDesc -> PlaylistSortOrder.DURATION_DESC
-                else -> PlaylistSortOrder.TITLE
-            }
-            applyFilter()
-        }
-
-        binding.toolbar.setNavigationOnClickListener { exitArtistDetail() }
-
-        refreshFromHost()
-    }
-
-    private fun selectViewMode(mode: PlaylistViewMode) {
-        viewMode = mode
-        selectedArtist = null
-        binding.chipAllSongs.isChecked = mode == PlaylistViewMode.ALL_SONGS
-        binding.chipArtists.isChecked = mode == PlaylistViewMode.BY_ARTIST
-        binding.chipPodcast.isChecked = mode == PlaylistViewMode.PODCAST
-        binding.chipArtists.visibility =
-            if (mode == PlaylistViewMode.PODCAST) View.GONE else View.VISIBLE
-        updateToolbar()
-        applyFilter()
-    }
-
-    private fun exitArtistDetail() {
-        if (selectedArtist == null) return
-        selectedArtist = null
-        updateToolbar()
-        applyFilter()
-    }
-
-    override fun onStart() {
-        super.onStart()
-        PlaybackStateHolder.addListener(this)
-    }
-
-    override fun onStop() {
-        PlaybackStateHolder.removeListener(this)
-        super.onStop()
-    }
-
-    override fun onPlaybackChanged(
-        song: Song?,
-        playing: Boolean,
-        positionMs: Long,
-        lines: List<com.car.mp3player.model.LrcLine>
-    ) {
-        songAdapter.playingPath = song?.path
-    }
-
-    override fun onPlaylistChanged(songs: List<Song>) {
-        songAdapter.playingPath = PlaybackStateHolder.currentSong?.path
-        applyFilter()
+        }.also { it.attach() }
     }
 
     fun refreshFromHost() {
-        applyFilter()
-    }
-
-    private fun sourceSongs(): List<Song> = when (viewMode) {
-        PlaylistViewMode.PODCAST -> (activity as? MainHost)?.podcastSongs().orEmpty()
-        else -> (activity as? MainHost)?.allSongs().orEmpty()
-    }
-
-    private fun currentVisibleSongs(): List<Song> {
-        var list = sourceSongs()
-        if (selectedArtist != null) {
-            list = list.filter { it.artist == selectedArtist }
-        }
-        if (query.isNotBlank()) {
-            val q = query.lowercase()
-            list = list.filter {
-                it.title.lowercase().contains(q) || it.artist.lowercase().contains(q)
+        childFragmentManager.fragments.forEach { fragment ->
+            when (fragment) {
+                is LocalPlaylistFragment -> fragment.refreshFromHost()
+                is OnlineMusicFragment -> fragment.refreshLibrary()
             }
-        }
-        return sortSongs(list)
-    }
-
-    private fun applyFilter() {
-        if (viewMode == PlaylistViewMode.BY_ARTIST && selectedArtist == null) {
-            showArtistList()
-            return
-        }
-
-        binding.songList.adapter = songAdapter
-        val list = currentVisibleSongs()
-        songAdapter.playingPath = PlaybackStateHolder.currentSong?.path
-        songAdapter.submitSongs(list)
-        binding.songCountText.text = getString(R.string.song_count, list.size)
-        binding.emptyText.text = if (viewMode == PlaylistViewMode.PODCAST) {
-            getString(R.string.podcast_empty, SettingsRepository(requireContext()).podcastPaths().firstOrNull() ?: "")
-        } else {
-            getString(R.string.no_songs)
-        }
-        binding.emptyText.visibility = if (list.isEmpty()) View.VISIBLE else View.GONE
-        binding.songList.visibility = if (list.isEmpty()) View.GONE else View.VISIBLE
-    }
-
-    private fun showArtistList() {
-        binding.songList.adapter = artistAdapter
-        val allSongs = (activity as? MainHost)?.allSongs().orEmpty()
-        var artists = allSongs.groupBy { it.artist }
-            .map { (name, songs) -> ArtistGroup(name, songs.size) }
-        if (query.isNotBlank()) {
-            val q = query.lowercase()
-            artists = artists.filter { it.name.lowercase().contains(q) }
-        }
-        artists = artists.sortedBy { it.name.lowercase() }
-        artistAdapter.submitList(artists)
-        binding.songCountText.text = getString(R.string.artist_count, artists.size)
-        binding.emptyText.text = getString(R.string.no_songs)
-        binding.emptyText.visibility = if (artists.isEmpty()) View.VISIBLE else View.GONE
-        binding.songList.visibility = if (artists.isEmpty()) View.GONE else View.VISIBLE
-    }
-
-    private fun sortSongs(list: List<Song>): List<Song> {
-        return when (sortOrder) {
-            PlaylistSortOrder.TITLE -> list.sortedBy { it.title.lowercase() }
-            PlaylistSortOrder.DURATION_ASC -> list.sortedWith(
-                compareBy<Song> { if (it.durationMs <= 0L) Long.MAX_VALUE else it.durationMs }
-                    .thenBy { it.title.lowercase() }
-            )
-            PlaylistSortOrder.DURATION_DESC -> list.sortedWith(
-                compareByDescending<Song> { if (it.durationMs <= 0L) Long.MIN_VALUE else it.durationMs }
-                    .thenBy { it.title.lowercase() }
-            )
-        }
-    }
-
-    private fun updateToolbar() {
-        val inArtistDetail = viewMode == PlaylistViewMode.BY_ARTIST && selectedArtist != null
-        binding.toolbar.navigationIcon = if (inArtistDetail) {
-            requireContext().getDrawable(android.R.drawable.ic_menu_revert)
-        } else {
-            null
-        }
-        binding.toolbar.subtitle = when {
-            viewMode == PlaylistViewMode.PODCAST -> getString(R.string.filter_podcast)
-            selectedArtist != null -> selectedArtist
-            viewMode == PlaylistViewMode.BY_ARTIST -> getString(R.string.filter_artists)
-            else -> null
         }
     }
 
     override fun onDestroyView() {
+        tabMediator?.detach()
+        tabMediator = null
         _binding = null
         super.onDestroyView()
+    }
+
+    private class PlaylistSectionAdapter(fragment: Fragment) : FragmentStateAdapter(fragment) {
+        override fun getItemCount(): Int = 4
+
+        override fun createFragment(position: Int): Fragment = when (position) {
+            0 -> LocalPlaylistFragment()
+            1 -> OnlineMusicFragment()
+            2 -> RadioFragment()
+            else -> PodcastFragment()
+        }
     }
 }

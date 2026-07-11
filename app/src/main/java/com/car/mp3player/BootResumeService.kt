@@ -8,6 +8,7 @@ import android.content.Intent
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.car.mp3player.data.PlaybackBootstrap
+import com.car.mp3player.data.PlaylistCache
 import com.car.mp3player.data.SettingsRepository
 import com.car.mp3player.model.LibraryKind
 import com.car.mp3player.playback.PlaybackStateHolder
@@ -56,28 +57,25 @@ class BootResumeService : Service() {
     private suspend fun attemptResume(playGreeting: Boolean): Boolean {
         if (!settings.autoResumePlayback) return false
 
-        var songs = withContext(Dispatchers.IO) {
-            val library = settings.inferLibrary(settings.lastSongPath)
+        val library = settings.lastActiveLibrary
+        val songs = withContext(Dispatchers.IO) {
             when (library) {
-                LibraryKind.PODCAST -> {
-                    PlaybackBootstrap.loadCachedPodcast(this@BootResumeService).ifEmpty {
-                        PlaybackBootstrap.scanPodcastLibrary(this@BootResumeService, settings)
-                    }
-                }
                 LibraryKind.MUSIC -> {
                     PlaybackBootstrap.loadCachedMusic(this@BootResumeService).ifEmpty {
                         PlaybackBootstrap.scanMusicLibrary(this@BootResumeService, settings)
                     }
                 }
+                else -> PlaylistCache.loadQueue(this@BootResumeService, library)
             }
         }
         if (songs.isEmpty()) return false
 
-        PlaybackStateHolder.setPlaylist(songs)
+        PlaybackStateHolder.setActiveLibrary(library)
+        PlaybackStateHolder.setPlaylist(songs, library = library)
         if (playGreeting && settings.startupSoundEnabled && !StartupSoundPlayer.hasPlayedThisSession()) {
             StartupSoundPlayer.playBeforeBootPlayback(this@BootResumeService, settings)
         }
-        PlaybackBootstrap.resumeIfNeeded(this@BootResumeService, songs, settings)
+        PlaybackBootstrap.resumeIfNeeded(this@BootResumeService, songs, settings, library)
         return PlaybackStateHolder.isPlaying
     }
 

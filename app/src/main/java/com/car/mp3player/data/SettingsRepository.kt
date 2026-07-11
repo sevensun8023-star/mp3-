@@ -10,6 +10,7 @@ import com.car.mp3player.model.LyricFontFamily
 import com.car.mp3player.model.LyricThemePreset
 import com.car.mp3player.model.PlaybackMode
 import com.car.mp3player.model.ThemeMode
+import com.car.mp3player.util.MediaPath
 
 class SettingsRepository(context: Context) {
     private val prefs: SharedPreferences =
@@ -87,7 +88,6 @@ class SettingsRepository(context: Context) {
         get() = prefs.getBoolean(KEY_OVERLAY_STROKE, true)
         set(value) = prefs.edit { putBoolean(KEY_OVERLAY_STROKE, value) }
 
-    /** 描边粗细 1（最细）~ 10（最粗），默认 3 */
     var overlayStrokeWidth: Int
         get() = prefs.getInt(KEY_OVERLAY_STROKE_WIDTH, 3).coerceIn(1, 10)
         set(value) = prefs.edit { putInt(KEY_OVERLAY_STROKE_WIDTH, value.coerceIn(1, 10)) }
@@ -103,6 +103,70 @@ class SettingsRepository(context: Context) {
     var clusterLyricsEnabled: Boolean
         get() = prefs.getBoolean(KEY_CLUSTER_LYRICS, false)
         set(value) = prefs.edit { putBoolean(KEY_CLUSTER_LYRICS, value) }
+
+    var onlineLyricsEnabled: Boolean
+        get() = prefs.getBoolean(KEY_ONLINE_LYRICS, true)
+        set(value) = prefs.edit { putBoolean(KEY_ONLINE_LYRICS, value) }
+
+    var onlineCoverEnabled: Boolean
+        get() = prefs.getBoolean(KEY_ONLINE_COVER, true)
+        set(value) = prefs.edit { putBoolean(KEY_ONLINE_COVER, value) }
+
+    var skipUnplayableVip: Boolean
+        get() = prefs.getBoolean(KEY_SKIP_VIP, false)
+        set(value) = prefs.edit { putBoolean(KEY_SKIP_VIP, value) }
+
+    var podcastShowDescription: Boolean
+        get() = prefs.getBoolean(KEY_PODCAST_DESC, true)
+        set(value) = prefs.edit { putBoolean(KEY_PODCAST_DESC, value) }
+
+    var onlineMusicApiUrl: String
+        get() = prefs.getString(KEY_ONLINE_API, DEFAULT_ONLINE_API) ?: DEFAULT_ONLINE_API
+        set(value) = prefs.edit { putString(KEY_ONLINE_API, value.trim()) }
+
+    var onlineMusicApiBackup: String
+        get() = prefs.getString(KEY_ONLINE_API_BACKUP, "") ?: ""
+        set(value) = prefs.edit { putString(KEY_ONLINE_API_BACKUP, value.trim()) }
+
+    var onlineMusicQuality: Int
+        get() = prefs.getInt(KEY_ONLINE_QUALITY, 320)
+        set(value) = prefs.edit { putInt(KEY_ONLINE_QUALITY, value) }
+
+    var radioBrowserApiUrl: String
+        get() = prefs.getString(KEY_RADIO_API, DEFAULT_RADIO_API) ?: DEFAULT_RADIO_API
+        set(value) = prefs.edit { putString(KEY_RADIO_API, value.trim()) }
+
+    var podcastRssText: String
+        get() = prefs.getString(KEY_PODCAST_RSS, DEFAULT_PODCAST_RSS) ?: DEFAULT_PODCAST_RSS
+        set(value) = prefs.edit { putString(KEY_PODCAST_RSS, value) }
+
+    var lastActiveLibrary: LibraryKind
+        get() = runCatching {
+            LibraryKind.valueOf(prefs.getString(KEY_LAST_ACTIVE_LIB, LibraryKind.MUSIC.name)!!)
+        }.getOrDefault(LibraryKind.MUSIC)
+        set(value) = prefs.edit { putString(KEY_LAST_ACTIVE_LIB, value.name) }
+
+    var lastSongPath: String?
+        get() = lastSongPath(lastActiveLibrary)
+        set(value) = setLastSong(lastActiveLibrary, value, lastPositionMs)
+
+    var lastPositionMs: Long
+        get() = lastPositionMs(lastActiveLibrary)
+        set(value) = setLastSong(lastActiveLibrary, lastSongPath, value)
+
+    fun lastSongPath(library: LibraryKind): String? =
+        prefs.getString(lastSongKey(library), null) ?: migrateLegacyLastSong(library)
+
+    fun lastPositionMs(library: LibraryKind): Long =
+        prefs.getLong(lastPositionKey(library), 0L)
+
+    fun setLastSong(library: LibraryKind, path: String?, positionMs: Long) {
+        prefs.edit {
+            if (path == null) remove(lastSongKey(library)) else putString(lastSongKey(library), path)
+            putLong(lastPositionKey(library), positionMs.coerceAtLeast(0L))
+            putString(KEY_LAST_ACTIVE_LIB, library.name)
+        }
+    }
 
     fun lyricSearchTitle(path: String): String? =
         prefs.getString(lyricTitleKey(path), null)
@@ -124,9 +188,6 @@ class SettingsRepository(context: Context) {
         }
     }
 
-    private fun lyricTitleKey(path: String) = "lyric_title_${path.hashCode()}"
-    private fun lyricArtistKey(path: String) = "lyric_artist_${path.hashCode()}"
-
     var themeMode: ThemeMode
         get() = ThemeMode.entries[prefs.getInt(KEY_THEME, ThemeMode.SYSTEM.ordinal)]
         set(value) = prefs.edit { putInt(KEY_THEME, value.ordinal) }
@@ -138,30 +199,6 @@ class SettingsRepository(context: Context) {
     fun setAppTheme(preset: AppThemePreset) {
         prefs.edit { putString(KEY_APP_THEME, preset.id) }
     }
-
-    var lastSongPath: String?
-        get() = prefs.getString(KEY_LAST_SONG, null)
-        set(value) = prefs.edit { putString(KEY_LAST_SONG, value) }
-
-    var lastPositionMs: Long
-        get() = prefs.getLong(KEY_LAST_POSITION, 0L)
-        set(value) = prefs.edit { putLong(KEY_LAST_POSITION, value) }
-
-    var scanPathsText: String
-        get() = prefs.getString(KEY_SCAN_PATHS, DEFAULT_SCAN_PATHS) ?: DEFAULT_SCAN_PATHS
-        set(value) = prefs.edit { putString(KEY_SCAN_PATHS, value) }
-
-    var scanTreeUrisText: String
-        get() = prefs.getString(KEY_SCAN_TREE_URIS, "") ?: ""
-        set(value) = prefs.edit { putString(KEY_SCAN_TREE_URIS, value) }
-
-    var onlineLyricsEnabled: Boolean
-        get() = prefs.getBoolean(KEY_ONLINE_LYRICS, true)
-        set(value) = prefs.edit { putBoolean(KEY_ONLINE_LYRICS, value) }
-
-    var onlineCoverEnabled: Boolean
-        get() = prefs.getBoolean(KEY_ONLINE_COVER, true)
-        set(value) = prefs.edit { putBoolean(KEY_ONLINE_COVER, value) }
 
     fun lyricTheme(): LyricThemePreset = LyricThemePreset.fromId(
         prefs.getString(KEY_LYRIC_THEME, LyricThemePreset.NETEASE.id) ?: LyricThemePreset.NETEASE.id
@@ -187,6 +224,14 @@ class SettingsRepository(context: Context) {
         prefs.edit { putString(KEY_LYRIC_FONT, family.id) }
     }
 
+    var scanPathsText: String
+        get() = prefs.getString(KEY_SCAN_PATHS, DEFAULT_SCAN_PATHS) ?: DEFAULT_SCAN_PATHS
+        set(value) = prefs.edit { putString(KEY_SCAN_PATHS, value) }
+
+    var scanTreeUrisText: String
+        get() = prefs.getString(KEY_SCAN_TREE_URIS, "") ?: ""
+        set(value) = prefs.edit { putString(KEY_SCAN_TREE_URIS, value) }
+
     fun scanPaths(): List<String> =
         scanPathsText.lines().map { it.trim() }.filter { it.isNotEmpty() }
 
@@ -195,30 +240,10 @@ class SettingsRepository(context: Context) {
 
     fun allScanEntries(): List<String> = scanPaths() + scanTreeUris()
 
-    var podcastPathsText: String
-        get() = prefs.getString(KEY_PODCAST_PATHS, DEFAULT_PODCAST_PATHS) ?: DEFAULT_PODCAST_PATHS
-        set(value) = prefs.edit { putString(KEY_PODCAST_PATHS, value) }
+    fun podcastRssUrls(): List<String> =
+        podcastRssText.lines().map { it.trim() }.filter { it.startsWith("http") }
 
-    fun podcastPaths(): List<String> =
-        podcastPathsText.lines().map { PodcastPaths.normalize(it) }.filter { it.isNotEmpty() }
-
-    fun addPodcastPath(path: String) {
-        val paths = podcastPaths().toMutableSet()
-        if (paths.add(PodcastPaths.normalize(path))) {
-            podcastPathsText = paths.joinToString("\n")
-        }
-    }
-
-    fun removePodcastPath(path: String) {
-        val paths = podcastPaths().toMutableSet()
-        paths.remove(PodcastPaths.normalize(path))
-        podcastPathsText = paths.joinToString("\n")
-    }
-
-    fun isPodcastSong(path: String): Boolean = PodcastPaths.isUnderPodcast(path, podcastPaths())
-
-    fun inferLibrary(path: String?): LibraryKind =
-        if (path != null && isPodcastSong(path)) LibraryKind.PODCAST else LibraryKind.MUSIC
+    fun inferLibrary(path: String?): LibraryKind = MediaPath.libraryKind(path)
 
     fun addScanPath(path: String) {
         val paths = scanPaths().toMutableSet()
@@ -251,6 +276,30 @@ class SettingsRepository(context: Context) {
         AppCompatDelegate.setDefaultNightMode(mode)
     }
 
+    private fun migrateLegacyLastSong(library: LibraryKind): String? {
+        if (library != LibraryKind.MUSIC) return null
+        val legacy = prefs.getString(KEY_LAST_SONG_LEGACY, null) ?: return null
+        setLastSong(LibraryKind.MUSIC, legacy, prefs.getLong(KEY_LAST_POSITION_LEGACY, 0L))
+        return legacy
+    }
+
+    private fun lastSongKey(library: LibraryKind): String = when (library) {
+        LibraryKind.MUSIC -> KEY_LAST_SONG_MUSIC
+        LibraryKind.ONLINE -> KEY_LAST_SONG_ONLINE
+        LibraryKind.RADIO -> KEY_LAST_SONG_RADIO
+        LibraryKind.PODCAST -> KEY_LAST_SONG_PODCAST
+    }
+
+    private fun lastPositionKey(library: LibraryKind): String = when (library) {
+        LibraryKind.MUSIC -> KEY_LAST_POS_MUSIC
+        LibraryKind.ONLINE -> KEY_LAST_POS_ONLINE
+        LibraryKind.RADIO -> KEY_LAST_POS_RADIO
+        LibraryKind.PODCAST -> KEY_LAST_POS_PODCAST
+    }
+
+    private fun lyricTitleKey(path: String) = "lyric_title_${path.hashCode()}"
+    private fun lyricArtistKey(path: String) = "lyric_artist_${path.hashCode()}"
+
     companion object {
         const val PREFS_NAME = "mp3_player_settings"
         const val KEY_FONT_SIZE = "font_size"
@@ -279,19 +328,36 @@ class SettingsRepository(context: Context) {
         const val KEY_APP_THEME = "app_theme"
         const val KEY_LYRIC_THEME = "lyric_theme"
         const val KEY_LYRIC_FONT = "lyric_font"
-        const val KEY_LAST_SONG = "last_song_path"
-        const val KEY_LAST_POSITION = "last_position_ms"
+        const val KEY_LAST_SONG_LEGACY = "last_song_path"
+        const val KEY_LAST_POSITION_LEGACY = "last_position_ms"
+        const val KEY_LAST_SONG_MUSIC = "last_song_music"
+        const val KEY_LAST_POS_MUSIC = "last_pos_music"
+        const val KEY_LAST_SONG_ONLINE = "last_song_online"
+        const val KEY_LAST_POS_ONLINE = "last_pos_online"
+        const val KEY_LAST_SONG_RADIO = "last_song_radio"
+        const val KEY_LAST_POS_RADIO = "last_pos_radio"
+        const val KEY_LAST_SONG_PODCAST = "last_song_podcast"
+        const val KEY_LAST_POS_PODCAST = "last_pos_podcast"
+        const val KEY_LAST_ACTIVE_LIB = "last_active_library"
         const val KEY_SCAN_PATHS = "scan_paths"
         const val KEY_SCAN_TREE_URIS = "scan_tree_uris"
-        const val KEY_PODCAST_PATHS = "podcast_paths"
         const val KEY_ONLINE_LYRICS = "online_lyrics"
         const val KEY_ONLINE_COVER = "online_cover"
+        const val KEY_SKIP_VIP = "skip_unplayable_vip"
+        const val KEY_PODCAST_DESC = "podcast_show_desc"
+        const val KEY_ONLINE_API = "online_music_api"
+        const val KEY_ONLINE_API_BACKUP = "online_music_api_backup"
+        const val KEY_ONLINE_QUALITY = "online_music_quality"
+        const val KEY_RADIO_API = "radio_browser_api"
+        const val KEY_PODCAST_RSS = "podcast_rss_urls"
 
         const val POSITION_TOP = 0
         const val POSITION_CENTER = 1
         const val POSITION_BOTTOM = 2
 
         const val DEFAULT_SCAN_PATHS = "/sdcard/Music\n/storage/emulated/0/Music"
-        const val DEFAULT_PODCAST_PATHS = "/storage/emulated/0/Music/邓肯"
+        const val DEFAULT_ONLINE_API = "https://music-api.gdstudio.xyz/api.php"
+        const val DEFAULT_RADIO_API = "https://de1.api.radio-browser.info"
+        const val DEFAULT_PODCAST_RSS = ""
     }
 }

@@ -58,6 +58,7 @@ class CarMediaButtonReceiver : BroadcastReceiver() {
         // Always claim keys first; service will no-op when no playable queue.
         return PlaybackStateHolder.isPlaying ||
             PlaybackStateHolder.songs.isNotEmpty() ||
-            SettingsRepository(context).lastSongPath != null
+        val settings = SettingsRepository(context)
+        settings.lastSongPath(settings.lastActiveLibrary) != null
     }
 }
