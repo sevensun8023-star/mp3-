@@ -128,14 +128,80 @@
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>
 
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/songList"
+    <LinearLayout
+        android:id="@+id/playlistDetailContainer"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:clipToPadding="false"
-        android:paddingBottom="12dp"
+        android:orientation="vertical"
         android:visibility="gone"
-        app:layout_behavior="@string/appbar_scrolling_view_behavior" />
+        app:layout_behavior="@string/appbar_scrolling_view_behavior">
+
+        <LinearLayout
+            android:id="@+id/playlistActionBar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingHorizontal="12dp"
+            android:paddingTop="4dp"
+            android:paddingBottom="8dp"
+            android:visibility="gone">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnPlayAll"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="6dp"
+                android:layout_weight="1"
+                android:minHeight="48dp"
+                android:text="@string/online_play_all"
+                android:textColor="@color/netease_red"
+                app:icon="@drawable/ic_play"
+                app:iconGravity="textStart"
+                app:iconPadding="8dp"
+                app:iconTint="@color/netease_red"
+                app:strokeColor="@color/netease_red" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnShufflePlay"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="6dp"
+                android:layout_weight="1"
+                android:minHeight="48dp"
+                android:text="@string/online_shuffle_play"
+                android:textColor="@color/netease_red"
+                app:icon="@drawable/ic_mode_shuffle"
+                app:iconGravity="textStart"
+                app:iconPadding="8dp"
+                app:iconTint="@color/netease_red"
+                app:strokeColor="@color/netease_red" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnFavoritePlaylist"
+                style="@style/Widget.MaterialComponents.Button"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:minHeight="48dp"
+                android:text="@string/online_favorite_playlist"
+                app:backgroundTint="@color/netease_red"
+                app:icon="@android:drawable/btn_star_big_off"
+                app:iconGravity="textStart"
+                app:iconPadding="8dp"
+                app:iconTint="@android:color/white" />
+        </LinearLayout>
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/songList"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:clipToPadding="false"
+            android:paddingBottom="12dp" />
+    </LinearLayout>
 
     <ProgressBar
         android:id="@+id/loading"
