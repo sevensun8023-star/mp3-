@@ -168,22 +168,26 @@ class OnlineMusicFragment : Fragment(), PlaybackStateHolder.Listener {
     private fun loadPlaylist(playlistId: String, title: String) {
         setLoading(true)
         lifecycleScope.launch {
-            val (summary, songs) = withContext(Dispatchers.IO) { api.loadPlaylist(playlistId) }
+            val result = withContext(Dispatchers.IO) { api.loadPlaylist(playlistId, title) }
             setLoading(false)
-            if (songs.isEmpty()) {
-                Toast.makeText(requireContext(), R.string.online_load_failed, Toast.LENGTH_SHORT).show()
+            if (!result.ok) {
+                val message = result.errorMessage ?: getString(R.string.online_load_failed)
+                Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
                 return@launch
             }
+            val summary = result.summary
+            val songs = result.songs
             showingDetail = true
             binding.discoverScroll.visibility = View.GONE
             binding.songList.visibility = View.VISIBLE
             binding.toolbar.navigationIcon = requireContext().getDrawable(android.R.drawable.ic_menu_revert)
-            binding.toolbar.subtitle = summary?.name ?: title
+            binding.toolbar.subtitle = title.ifBlank { summary?.name.orEmpty() }
             currentSongs = songs
             renderSongList(songs, getString(R.string.online_empty))
             binding.toolbar.setOnLongClickListener {
                 summary?.let {
-                    library.importPlaylist(it.name, playlistId, songs, api, it.coverUrl)
+                    val importName = it.name.ifBlank { title }
+                    library.importPlaylist(importName, playlistId, songs, api, it.coverUrl)
                     Toast.makeText(requireContext(), R.string.online_favorited, Toast.LENGTH_SHORT).show()
                 }
                 true
@@ -203,7 +207,7 @@ class OnlineMusicFragment : Fragment(), PlaybackStateHolder.Listener {
             binding.songList.visibility = View.VISIBLE
             binding.toolbar.navigationIcon = requireContext().getDrawable(android.R.drawable.ic_menu_revert)
             binding.toolbar.subtitle = getString(R.string.online_search_result, keyword)
-            val playlistRows = playlists.take(5).map { summary ->
+            val playlistRows = playlists.take(8).map { summary ->
                 Song(
                     id = summary.id.hashCode().toLong(),
                     title = "🎵 ${summary.name}",
