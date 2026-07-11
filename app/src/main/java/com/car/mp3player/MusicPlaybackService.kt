@@ -163,10 +163,11 @@ class MusicPlaybackService : Service() {
 
         when (action) {
             ACTION_PLAY_INDEX -> {
-                val index = intent.getIntExtra(EXTRA_INDEX, 0)
-                val seek = intent.getLongExtra(EXTRA_SEEK, 0L)
-                val library = intent.libraryExtra()
-                runWithPlaylist(intent, library) { list ->
+                val cmd = intent ?: return START_NOT_STICKY
+                val index = cmd.getIntExtra(EXTRA_INDEX, 0)
+                val seek = cmd.getLongExtra(EXTRA_SEEK, 0L)
+                val library = cmd.libraryExtra()
+                runWithPlaylist(cmd, library) { list ->
                     if (list.isNotEmpty()) {
                         startPlaylist(list, index, seek, library)
                     } else if (playlist.isNotEmpty()) {
@@ -205,15 +206,17 @@ class MusicPlaybackService : Service() {
                 }
             }
             ACTION_SET_MODE -> {
-                val mode = PlaybackMode.entries[intent.getIntExtra(EXTRA_MODE, 0)]
+                val cmd = intent ?: return START_NOT_STICKY
+                val mode = PlaybackMode.entries[cmd.getIntExtra(EXTRA_MODE, 0)]
                 setPlayMode(mode)
             }
             ACTION_RESUME -> resumeLast()
             ACTION_SEEK -> {
-                val seek = intent.getLongExtra(EXTRA_SEEK, 0L)
+                val cmd = intent ?: return START_NOT_STICKY
+                val seek = cmd.getLongExtra(EXTRA_SEEK, 0L)
                 runCatching { exoPlayer?.seekTo(seek.coerceAtLeast(0L)) }
             }
-            ACTION_RELOAD_LYRICS -> reloadLyrics(intent)
+            ACTION_RELOAD_LYRICS -> intent?.let { reloadLyrics(it) }
         }
         return if (playlist.isNotEmpty()) START_STICKY else START_NOT_STICKY
     }
