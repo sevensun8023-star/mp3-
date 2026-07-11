@@ -85,7 +85,8 @@ class OnlineLibraryStore(context: Context) {
     fun createPlaylist(name: String): UserPlaylist {
         val playlist = UserPlaylist(
             id = MediaPath.newLocalId(),
-            name = name.trim().ifBlank { "我的歌单" }
+            name = name.trim().ifBlank { "我的歌单" },
+            trackLocalIds = emptyList()
         )
         userPlaylists.add(0, playlist)
         persist()
