@@ -240,8 +240,10 @@ class SettingsRepository(context: Context) {
 
     fun allScanEntries(): List<String> = scanPaths() + scanTreeUris()
 
-    fun podcastRssUrls(): List<String> =
-        podcastRssText.lines().map { it.trim() }.filter { it.startsWith("http") }
+    fun podcastRssUrls(): List<String> {
+        val custom = podcastRssText.lines().map { it.trim() }.filter { it.startsWith("http") }
+        return custom.ifEmpty { PodcastDefaults.feedUrls() }
+    }
 
     fun inferLibrary(path: String?): LibraryKind = MediaPath.libraryKind(path)
 
@@ -358,6 +360,6 @@ class SettingsRepository(context: Context) {
         const val DEFAULT_SCAN_PATHS = "/sdcard/Music\n/storage/emulated/0/Music"
         const val DEFAULT_ONLINE_API = "https://music-api.gdstudio.xyz/api.php"
         const val DEFAULT_RADIO_API = "https://de1.api.radio-browser.info"
-        const val DEFAULT_PODCAST_RSS = ""
+        const val DEFAULT_PODCAST_RSS = PodcastDefaults.defaultRssText()
     }
 }

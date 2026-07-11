@@ -22,7 +22,7 @@ class RssFeedRepository(
         settings.podcastRssUrls().mapIndexed { index, url ->
             PodcastFeed(
                 id = feedId(url),
-                title = cachedFeedTitle(url) ?: "播客 ${index + 1}",
+                title = cachedFeedTitle(url) ?: PodcastDefaults.displayName(url) ?: "播客 ${index + 1}",
                 url = url,
                 imageUrl = cachedFeedImage(url)
             )
@@ -88,7 +88,7 @@ class RssFeedRepository(
                     "enclosure" -> if (inItem) {
                         val type = parser.getAttributeValue(null, "type").orEmpty()
                         val url = parser.getAttributeValue(null, "url").orEmpty()
-                        if (url.startsWith("http") && (type.contains("audio") || url.endsWith(".mp3") || url.endsWith(".m4a"))) {
+                        if (url.startsWith("http") && isAudioEnclosure(type, url)) {
                             audioUrl = url
                         }
                     }
@@ -126,6 +126,13 @@ class RssFeedRepository(
 
     private fun stripHtml(raw: String): String =
         raw.replace(Regex("<[^>]+>"), " ").replace(Regex("\\s+"), " ").trim()
+
+    private fun isAudioEnclosure(type: String, url: String): Boolean {
+        if (type.contains("audio", ignoreCase = true)) return true
+        val lower = url.lowercase()
+        return lower.endsWith(".mp3") || lower.endsWith(".m4a") || lower.endsWith(".aac") ||
+            lower.contains(".mp3?") || lower.contains(".m4a?")
+    }
 
     private fun feedId(url: String): String {
         val digest = MessageDigest.getInstance("MD5").digest(url.toByteArray())
