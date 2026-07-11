@@ -11,17 +11,17 @@ object OnlineCurated {
         CuratedChart("2884035", "原创榜")
     )
 
-    /** 96 前后华语流行：周杰伦、林俊杰、王力宏、陶喆及同年代精选 */
+    /** 已验证可用的公开歌单（GD Studio types=playlist 可正常加载） */
     val featuredPlaylists: List<CuratedPlaylist> = listOf(
-        CuratedPlaylist("4922719423", "90后华语回忆录", "8090经典"),
-        CuratedPlaylist("26467411", "8090后青春记忆", "怀旧精选"),
-        CuratedPlaylist("1116878700", "周杰伦热门歌曲", "Jay Chou"),
-        CuratedPlaylist("764984375", "林俊杰精选", "JJ Lin"),
-        CuratedPlaylist("492698114", "王力宏精选", "Leehom"),
-        CuratedPlaylist("2060260275", "陶喆 R&B 精选", "David Tao"),
-        CuratedPlaylist("4923939873", "华语 R&B 慢歌", "节奏蓝调"),
-        CuratedPlaylist("5202684592", "华语速爆新歌", "新鲜速递"),
-        CuratedPlaylist("113716395", "经典老歌 300 首", "永恒旋律"),
-        CuratedPlaylist("7452421334", "开车必听华语", "公路歌单")
+        CuratedPlaylist("13820356968", "90后华语回忆录", "218 首经典"),
+        CuratedPlaylist("5347332390", "8090后青春记忆", "832 首怀旧"),
+        CuratedPlaylist("621935756", "周杰伦热门歌曲", "184 首 Jay Chou"),
+        CuratedPlaylist("7694176632", "林俊杰精选", "40 首 JJ Lin"),
+        CuratedPlaylist("532892827", "王力宏精选", "50 首 Leehom"),
+        CuratedPlaylist("14060780288", "陶喆 R&B 精选", "79 首 David Tao"),
+        CuratedPlaylist("13532313680", "华语 R&B 慢歌", "80 首节奏蓝调"),
+        CuratedPlaylist("2829883282", "华语私人雷达", "每日更新"),
+        CuratedPlaylist("17747519380", "经典老歌精选", "100 首金曲"),
+        CuratedPlaylist("14069098211", "开车必听华语", "427 首 KTV 经典")
     )
 }

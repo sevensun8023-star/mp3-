@@ -2,6 +2,7 @@ package com.car.mp3player.data
 
 import com.car.mp3player.model.OnlinePlaylistSummary
 import com.car.mp3player.model.OnlineTrackRef
+import com.car.mp3player.model.PlaylistLoadResult
 import com.car.mp3player.model.Song
 import com.car.mp3player.util.MediaPath
 import org.json.JSONArray
@@ -24,31 +25,26 @@ class OnlineMusicApi(private val settings: SettingsRepository) {
 
     fun searchPlaylists(keyword: String, page: Int = 1, count: Int = 20): List<OnlinePlaylistSummary> {
         if (keyword.isBlank()) return emptyList()
-        val encoded = URLEncoder.encode(keyword, Charsets.UTF_8.name())
-        val primary = httpGet(buildUrl("types=search&source=netease_playlist&name=$encoded&count=$count&pages=$page"))
-        if (primary != null) {
-            val parsed = parsePlaylistSearch(primary)
-            if (parsed.isNotEmpty()) return parsed
-        }
-        return searchPlaylistsViaPlaylistApi(keyword, count)
+        return searchPlaylistsViaCloudSearch(keyword, page, count)
     }
 
-    fun loadPlaylist(playlistId: String): Pair<OnlinePlaylistSummary?, List<Song>> {
-        val id = extractPlaylistId(playlistId) ?: return null to emptyList()
-        val body = httpGet(buildUrl("types=playlist&source=netease&id=$id")) ?: return null to emptyList()
-        val json = runCatching { JSONObject(body) }.getOrNull() ?: return null to emptyList()
-        val playlist = json.optJSONObject("playlist") ?: return null to emptyList()
-        val summary = OnlinePlaylistSummary(
-            id = playlist.optString("id", id),
-            name = playlist.optString("name"),
-            coverUrl = playlist.optString("coverImgUrl").takeIf { it.isNotBlank() },
-            trackCount = playlist.optInt("trackCount"),
-            playCount = playlist.optLong("playCount"),
-            subscribedCount = playlist.optLong("subscribedCount")
-        )
-        val tracks = playlist.optJSONArray("tracks")?.let { parsePlaylistTracks(it) }
-            ?: emptyList()
-        return summary to tracks
+    fun loadPlaylist(playlistId: String, displayTitle: String? = null): PlaylistLoadResult {
+        val id = extractPlaylistId(playlistId)
+            ?: return PlaylistLoadResult(null, emptyList(), "无效歌单 ID")
+
+        val gdResult = loadPlaylistFromGdStudio(id)
+        if (gdResult.songs.isNotEmpty()) {
+            return gdResult.withDisplayTitle(displayTitle)
+        }
+
+        val neteaseResult = loadPlaylistFromNeteaseDetail(id)
+        if (neteaseResult.songs.isNotEmpty()) {
+            return neteaseResult.withDisplayTitle(displayTitle)
+        }
+
+        val error = gdResult.errorMessage ?: neteaseResult.errorMessage ?: "歌单不存在或暂无歌曲"
+        val summary = gdResult.summary ?: neteaseResult.summary
+        return PlaylistLoadResult(summary, emptyList(), error)
     }
 
     fun resolvePlayUrl(song: Song): PlayUrlResult? {
@@ -108,6 +104,103 @@ class OnlineMusicApi(private val settings: SettingsRepository) {
         )
     }
 
+    private fun loadPlaylistFromGdStudio(id: String): PlaylistLoadResult {
+        val body = httpGet(buildUrl("types=playlist&source=netease&id=$id"))
+            ?: return PlaylistLoadResult(null, emptyList(), "网络请求失败")
+        val json = runCatching { JSONObject(body) }.getOrNull()
+            ?: return PlaylistLoadResult(null, emptyList(), "解析歌单失败")
+
+        val code = json.optInt("code", -1)
+        if (code == 404) {
+            val message = json.optString("message").ifBlank { json.optString("msg", "歌单不存在") }
+            return PlaylistLoadResult(null, emptyList(), message)
+        }
+
+        val playlist = json.optJSONObject("playlist")
+            ?: return PlaylistLoadResult(null, emptyList(), "歌单数据无效")
+
+        val summary = summaryFromPlaylistObject(playlist, id)
+        val tracks = playlist.optJSONArray("tracks")?.let { parseGdStudioTracks(it) }.orEmpty()
+        if (tracks.isNotEmpty()) {
+            return PlaylistLoadResult(summary, tracks)
+        }
+
+        val trackCount = playlist.optInt("trackCount")
+        return if (trackCount > 0) {
+            PlaylistLoadResult(summary, emptyList(), "歌单歌曲加载失败，请稍后重试")
+        } else {
+            PlaylistLoadResult(summary, emptyList(), "歌单暂无歌曲")
+        }
+    }
+
+    private fun loadPlaylistFromNeteaseDetail(id: String): PlaylistLoadResult {
+        val url = "https://music.163.com/api/playlist/detail?id=$id"
+        val body = httpGet(url, mapOf("Referer" to "https://music.163.com/"))
+            ?: return PlaylistLoadResult(null, emptyList(), null)
+        val json = runCatching { JSONObject(body) }.getOrNull()
+            ?: return PlaylistLoadResult(null, emptyList(), null)
+        if (json.optInt("code") != 200) {
+            return PlaylistLoadResult(null, emptyList(), null)
+        }
+
+        val playlist = json.optJSONObject("result") ?: json.optJSONObject("playlist")
+            ?: return PlaylistLoadResult(null, emptyList(), null)
+
+        val summary = summaryFromPlaylistObject(playlist, id)
+        val tracks = playlist.optJSONArray("tracks")?.let { parseNeteaseDetailTracks(it) }.orEmpty()
+        if (tracks.isNotEmpty()) {
+            return PlaylistLoadResult(summary, tracks)
+        }
+
+        return PlaylistLoadResult(summary, emptyList(), null)
+    }
+
+    private fun searchPlaylistsViaCloudSearch(keyword: String, page: Int, count: Int): List<OnlinePlaylistSummary> {
+        val encoded = URLEncoder.encode(keyword, Charsets.UTF_8.name())
+        val offset = (page - 1).coerceAtLeast(0) * count
+        val url = "https://music.163.com/api/cloudsearch/pc?s=$encoded&type=1000&offset=$offset&limit=$count"
+        val body = httpGet(url, mapOf("Referer" to "https://music.163.com/")) ?: return emptyList()
+        val json = runCatching { JSONObject(body) }.getOrNull() ?: return emptyList()
+        if (json.optInt("code") != 200) return emptyList()
+
+        val playlists = json.optJSONObject("result")?.optJSONArray("playlists") ?: return emptyList()
+        return buildList {
+            for (i in 0 until playlists.length()) {
+                val item = playlists.optJSONObject(i) ?: continue
+                add(
+                    OnlinePlaylistSummary(
+                        id = item.optLong("id").toString(),
+                        name = item.optString("name"),
+                        coverUrl = normalizeCoverUrl(item.optString("coverImgUrl")),
+                        trackCount = item.optInt("trackCount"),
+                        playCount = item.optLong("playCount"),
+                        subscribedCount = item.optLong("bookCount")
+                    )
+                )
+            }
+        }
+    }
+
+    private fun summaryFromPlaylistObject(playlist: JSONObject, fallbackId: String): OnlinePlaylistSummary {
+        val id = playlist.optLong("id").takeIf { it > 0L }?.toString()
+            ?: playlist.optString("id", fallbackId)
+        return OnlinePlaylistSummary(
+            id = id,
+            name = playlist.optString("name"),
+            coverUrl = normalizeCoverUrl(
+                playlist.optString("coverImgUrl").ifBlank { playlist.optString("picUrl") }
+            ),
+            trackCount = playlist.optInt("trackCount"),
+            playCount = playlist.optLong("playCount"),
+            subscribedCount = playlist.optLong("subscribedCount", playlist.optLong("bookCount"))
+        )
+    }
+
+    private fun PlaylistLoadResult.withDisplayTitle(displayTitle: String?): PlaylistLoadResult {
+        if (displayTitle.isNullOrBlank() || summary == null) return this
+        return copy(summary = summary.copy(name = displayTitle))
+    }
+
     private fun buildUrl(query: String): String {
         val base = settings.onlineMusicApiUrl.trimEnd('/')
         val separator = if (base.contains('?')) "&" else "?"
@@ -139,53 +232,7 @@ class OnlineMusicApi(private val settings: SettingsRepository) {
         }
     }
 
-    private fun parsePlaylistSearch(body: String): List<OnlinePlaylistSummary> {
-        val array = runCatching { JSONArray(body) }.getOrNull() ?: return emptyList()
-        return buildList {
-            for (i in 0 until array.length()) {
-                val item = array.optJSONObject(i) ?: continue
-                add(
-                    OnlinePlaylistSummary(
-                        id = item.optString("id"),
-                        name = item.optString("name"),
-                        coverUrl = item.optString("pic").takeIf { it.startsWith("http") }
-                            ?: item.optString("coverImgUrl").takeIf { it.startsWith("http") },
-                        trackCount = item.optInt("trackCount", item.optInt("songCount")),
-                        playCount = item.optLong("playCount"),
-                        subscribedCount = item.optLong("subscribedCount")
-                    )
-                )
-            }
-        }
-    }
-
-    private fun searchPlaylistsViaPlaylistApi(keyword: String, count: Int): List<OnlinePlaylistSummary> {
-        val encoded = URLEncoder.encode(keyword, Charsets.UTF_8.name())
-        val url = "https://music.163.com/api/search/get/web?s=$encoded&type=1000&offset=0&limit=$count"
-        val body = httpGet(url, mapOf("Referer" to "https://music.163.com/")) ?: return emptyList()
-        val playlists = runCatching { JSONObject(body) }
-            .getOrNull()
-            ?.optJSONObject("result")
-            ?.optJSONArray("playlists")
-            ?: return emptyList()
-        return buildList {
-            for (i in 0 until playlists.length()) {
-                val item = playlists.optJSONObject(i) ?: continue
-                add(
-                    OnlinePlaylistSummary(
-                        id = item.optLong("id").toString(),
-                        name = item.optString("name"),
-                        coverUrl = item.optString("coverImgUrl").takeIf { it.isNotBlank() },
-                        trackCount = item.optInt("trackCount"),
-                        playCount = item.optLong("playCount"),
-                        subscribedCount = item.optLong("bookCount")
-                    )
-                )
-            }
-        }
-    }
-
-    private fun parsePlaylistTracks(array: JSONArray): List<Song> {
+    private fun parseGdStudioTracks(array: JSONArray): List<Song> {
         return buildList {
             for (i in 0 until array.length()) {
                 val track = array.optJSONObject(i) ?: continue
@@ -195,10 +242,6 @@ class OnlineMusicApi(private val settings: SettingsRepository) {
                     }
                 }.orEmpty()
                 val album = track.optJSONObject("al")
-                val picId = normalizePicId(
-                    album?.optLong("picId")?.toString(),
-                    track.optLong("picId").takeIf { it > 0L }?.toString()
-                )
                 add(
                     MediaPath.songFromOnlineSearch(
                         source = "netease",
@@ -206,7 +249,38 @@ class OnlineMusicApi(private val settings: SettingsRepository) {
                         title = track.optString("name"),
                         artist = artists.ifBlank { "未知歌手" },
                         album = album?.optString("name").orEmpty(),
-                        picId = picId,
+                        picId = normalizePicId(
+                            album?.optLong("picId")?.toString(),
+                            track.optLong("picId").takeIf { it > 0L }?.toString()
+                        ),
+                        durationMs = track.optLong("dt")
+                    )
+                )
+            }
+        }
+    }
+
+    private fun parseNeteaseDetailTracks(array: JSONArray): List<Song> {
+        return buildList {
+            for (i in 0 until array.length()) {
+                val track = array.optJSONObject(i) ?: continue
+                val artists = track.optJSONArray("artists")?.let { arr ->
+                    (0 until arr.length()).joinToString("/") { idx ->
+                        arr.optJSONObject(idx)?.optString("name").orEmpty()
+                    }
+                }.orEmpty()
+                val album = track.optJSONObject("album")
+                add(
+                    MediaPath.songFromOnlineSearch(
+                        source = "netease",
+                        trackId = track.optLong("id").toString(),
+                        title = track.optString("name"),
+                        artist = artists.ifBlank { "未知歌手" },
+                        album = album?.optString("name").orEmpty(),
+                        picId = normalizePicId(
+                            album?.optLong("picId")?.toString(),
+                            track.optLong("picId").takeIf { it > 0L }?.toString()
+                        ),
                         durationMs = track.optLong("dt")
                     )
                 )
@@ -220,6 +294,11 @@ class OnlineMusicApi(private val settings: SettingsRepository) {
         Regex("id=(\\d+)").find(trimmed)?.groupValues?.getOrNull(1)?.let { return it }
         Regex("(\\d{6,})").find(trimmed)?.groupValues?.getOrNull(1)?.let { return it }
         return null
+    }
+
+    private fun normalizeCoverUrl(url: String?): String? {
+        val value = url?.trim()?.takeIf { it.startsWith("http") } ?: return null
+        return if (value.startsWith("http://")) "https://${value.removePrefix("http://")}" else value
     }
 
     private fun normalize(value: String): String =
