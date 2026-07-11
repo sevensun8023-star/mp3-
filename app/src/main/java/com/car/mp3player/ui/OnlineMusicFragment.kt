@@ -1,5 +1,6 @@
 package com.car.mp3player.ui
 
+import android.content.Intent
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
@@ -8,14 +9,13 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
-import android.widget.ImageView
-import android.widget.TextView
 import android.widget.Toast
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.car.mp3player.MusicPlaybackService
 import com.car.mp3player.R
 import com.car.mp3player.SongAdapter
 import com.car.mp3player.data.OnlineCurated
@@ -29,8 +29,8 @@ import com.car.mp3player.model.CuratedChart
 import com.car.mp3player.model.CuratedPlaylist
 import com.car.mp3player.model.LibraryKind
 import com.car.mp3player.model.OnlinePlaylistSummary
+import com.car.mp3player.model.PlaybackMode
 import com.car.mp3player.model.Song
-import com.car.mp3player.model.UserPlaylist
 import com.car.mp3player.playback.PlaybackStateHolder
 import com.car.mp3player.util.MediaPath
 import kotlinx.coroutines.Dispatchers
@@ -48,6 +48,11 @@ class OnlineMusicFragment : Fragment(), PlaybackStateHolder.Listener {
     private var showingDetail = false
     private var mineMode = false
     private var lastClickMs = 0L
+    private var activePlaylistId: String? = null
+    private var activePlaylistTitle: String? = null
+    private var activePlaylistSummary: OnlinePlaylistSummary? = null
+    private var activePlayableSongs: List<Song> = emptyList()
+    private var allowFavoritePlaylist = false
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentOnlineMusicBinding.inflate(inflater, container, false)
@@ -71,11 +76,11 @@ class OnlineMusicFragment : Fragment(), PlaybackStateHolder.Listener {
                     song.path.startsWith("meta://playlist/") -> {
                         val id = song.path.removePrefix("meta://playlist/")
                         val tracks = library.songsForPlaylist(id)
-                        currentSongs = tracks
-                        renderSongList(tracks, getString(R.string.online_empty))
-                        binding.toolbar.subtitle = song.title.removePrefix("📁 ").trim()
-                        binding.toolbar.navigationIcon =
-                            requireContext().getDrawable(android.R.drawable.ic_menu_revert)
+                        showPlaylistDetail(
+                            title = song.title.removePrefix("📁 ").trim(),
+                            songs = tracks,
+                            allowFavorite = false
+                        )
                     }
                     else -> {
                         val playable = currentSongs.filter { !it.path.startsWith("meta://") }
@@ -108,6 +113,10 @@ class OnlineMusicFragment : Fragment(), PlaybackStateHolder.Listener {
         binding.chipMine.setOnClickListener { switchMine(true) }
         binding.toolbar.setNavigationOnClickListener { showDiscoverHome() }
 
+        binding.btnPlayAll.setOnClickListener { playActivePlaylist(shuffle = false) }
+        binding.btnShufflePlay.setOnClickListener { playActivePlaylist(shuffle = true) }
+        binding.btnFavoritePlaylist.setOnClickListener { favoriteActivePlaylist() }
+
         binding.searchInput.setOnEditorActionListener { _, actionId, event ->
             if (actionId == EditorInfo.IME_ACTION_SEARCH ||
                 (event?.keyCode == KeyEvent.KEYCODE_ENTER && event.action == KeyEvent.ACTION_DOWN)
@@ -137,18 +146,20 @@ class OnlineMusicFragment : Fragment(), PlaybackStateHolder.Listener {
     private fun showDiscoverHome() {
         showingDetail = false
         mineMode = false
+        clearActivePlaylist()
         binding.chipDiscover.isChecked = true
         binding.toolbar.navigationIcon = null
         binding.toolbar.subtitle = null
         binding.discoverScroll.visibility = View.VISIBLE
-        binding.songList.visibility = View.GONE
+        binding.playlistDetailContainer.visibility = View.GONE
         binding.emptyText.visibility = View.GONE
     }
 
     private fun showMineLibrary() {
         showingDetail = true
+        clearActivePlaylist()
         binding.discoverScroll.visibility = View.GONE
-        binding.songList.visibility = View.VISIBLE
+        binding.playlistDetailContainer.visibility = View.VISIBLE
         binding.toolbar.navigationIcon = requireContext().getDrawable(android.R.drawable.ic_menu_revert)
         binding.toolbar.subtitle = getString(R.string.online_mine)
         val playlistHeaders = library.userPlaylists().map { playlist ->
@@ -175,23 +186,98 @@ class OnlineMusicFragment : Fragment(), PlaybackStateHolder.Listener {
                 Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
                 return@launch
             }
-            val summary = result.summary
-            val songs = result.songs
-            showingDetail = true
-            binding.discoverScroll.visibility = View.GONE
-            binding.songList.visibility = View.VISIBLE
-            binding.toolbar.navigationIcon = requireContext().getDrawable(android.R.drawable.ic_menu_revert)
-            binding.toolbar.subtitle = title.ifBlank { summary?.name.orEmpty() }
-            currentSongs = songs
-            renderSongList(songs, getString(R.string.online_empty))
-            binding.toolbar.setOnLongClickListener {
-                summary?.let {
-                    val importName = it.name.ifBlank { title }
-                    library.importPlaylist(importName, playlistId, songs, api, it.coverUrl)
-                    Toast.makeText(requireContext(), R.string.online_favorited, Toast.LENGTH_SHORT).show()
-                }
-                true
-            }
+            showPlaylistDetail(
+                title = title.ifBlank { result.summary?.name.orEmpty() },
+                songs = result.songs,
+                playlistId = playlistId,
+                summary = result.summary,
+                allowFavorite = true
+            )
+        }
+    }
+
+    private fun showPlaylistDetail(
+        title: String,
+        songs: List<Song>,
+        playlistId: String? = null,
+        summary: OnlinePlaylistSummary? = null,
+        allowFavorite: Boolean = false
+    ) {
+        showingDetail = true
+        activePlaylistId = playlistId
+        activePlaylistTitle = title
+        activePlaylistSummary = summary
+        activePlayableSongs = songs
+        allowFavoritePlaylist = allowFavorite && !playlistId.isNullOrBlank()
+
+        binding.discoverScroll.visibility = View.GONE
+        binding.playlistDetailContainer.visibility = View.VISIBLE
+        binding.toolbar.navigationIcon = requireContext().getDrawable(android.R.drawable.ic_menu_revert)
+        binding.toolbar.subtitle = title
+        currentSongs = songs
+        renderSongList(songs, getString(R.string.online_empty))
+        updatePlaylistActionBar()
+    }
+
+    private fun clearActivePlaylist() {
+        activePlaylistId = null
+        activePlaylistTitle = null
+        activePlaylistSummary = null
+        activePlayableSongs = emptyList()
+        allowFavoritePlaylist = false
+        binding.playlistActionBar.visibility = View.GONE
+    }
+
+    private fun updatePlaylistActionBar() {
+        val hasSongs = activePlayableSongs.isNotEmpty()
+        binding.playlistActionBar.visibility = if (hasSongs) View.VISIBLE else View.GONE
+        binding.btnPlayAll.isEnabled = hasSongs
+        binding.btnShufflePlay.isEnabled = hasSongs
+        binding.btnFavoritePlaylist.visibility = if (allowFavoritePlaylist) View.VISIBLE else View.GONE
+        if (!allowFavoritePlaylist) return
+
+        val saved = activePlaylistId?.let { library.findImportedPlaylist(it) } != null
+        binding.btnFavoritePlaylist.text = getString(R.string.online_favorite_playlist)
+        binding.btnFavoritePlaylist.setIconResource(
+            if (saved) android.R.drawable.btn_star_big_on else android.R.drawable.btn_star_big_off
+        )
+        binding.btnFavoritePlaylist.isEnabled = !saved
+        binding.btnFavoritePlaylist.alpha = if (saved) 0.7f else 1f
+    }
+
+    private fun playActivePlaylist(shuffle: Boolean) {
+        val songs = activePlayableSongs
+        if (songs.isEmpty()) return
+        setPlayMode(if (shuffle) PlaybackMode.SHUFFLE else PlaybackMode.ORDER)
+        val index = if (shuffle) songs.indices.random() else 0
+        (activity as? MainHost)?.switchToTab(1)
+        (activity as? MainHost)?.playSongSubset(songs, index, LibraryKind.ONLINE)
+    }
+
+    private fun favoriteActivePlaylist() {
+        val playlistId = activePlaylistId ?: return
+        val title = activePlaylistTitle.orEmpty()
+        val summary = activePlaylistSummary
+        val songs = activePlayableSongs
+        if (songs.isEmpty()) return
+        if (library.findImportedPlaylist(playlistId) != null) {
+            Toast.makeText(requireContext(), R.string.online_playlist_already_saved, Toast.LENGTH_SHORT).show()
+            updatePlaylistActionBar()
+            return
+        }
+        val importName = title.ifBlank { summary?.name.orEmpty() }.ifBlank { "在线歌单" }
+        library.importPlaylist(importName, playlistId, songs, api, summary?.coverUrl)
+        Toast.makeText(requireContext(), R.string.online_playlist_saved, Toast.LENGTH_SHORT).show()
+        updatePlaylistActionBar()
+    }
+
+    private fun setPlayMode(mode: PlaybackMode) {
+        val intent = Intent(requireContext(), MusicPlaybackService::class.java).apply {
+            action = MusicPlaybackService.ACTION_SET_MODE
+            putExtra(MusicPlaybackService.EXTRA_MODE, mode.ordinal)
+        }
+        runCatching {
+            ContextCompat.startForegroundService(requireContext(), intent)
         }
     }
 
@@ -203,8 +289,9 @@ class OnlineMusicFragment : Fragment(), PlaybackStateHolder.Listener {
             val playlists = withContext(Dispatchers.IO) { api.searchPlaylists(keyword) }
             setLoading(false)
             showingDetail = true
+            clearActivePlaylist()
             binding.discoverScroll.visibility = View.GONE
-            binding.songList.visibility = View.VISIBLE
+            binding.playlistDetailContainer.visibility = View.VISIBLE
             binding.toolbar.navigationIcon = requireContext().getDrawable(android.R.drawable.ic_menu_revert)
             binding.toolbar.subtitle = getString(R.string.online_search_result, keyword)
             val playlistRows = playlists.take(8).map { summary ->
@@ -227,6 +314,9 @@ class OnlineMusicFragment : Fragment(), PlaybackStateHolder.Listener {
         binding.emptyText.text = emptyMessage
         binding.emptyText.visibility = if (songs.isEmpty()) View.VISIBLE else View.GONE
         binding.songList.visibility = if (songs.isEmpty()) View.GONE else View.VISIBLE
+        if (activePlayableSongs.isNotEmpty() && songs === activePlayableSongs) {
+            updatePlaylistActionBar()
+        }
     }
 
     private fun setLoading(loading: Boolean) {
